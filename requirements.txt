@@ -1,0 +1,16 @@
+# Neurotronic Phase Caster - Python Dependencies
+
+# Core numerical computing
+numpy>=1.21.0,<2.0.0
+
+# Visualization
+matplotlib>=3.5.0,<4.0.0
+
+# Optional: Advanced analysis
+# scipy>=1.7.0  # Uncomment if using advanced signal processing
+
+# Development dependencies (install with: pip install -r requirements-dev.txt)
+# pytest>=7.0.0
+# black>=22.0.0
+# flake8>=4.0.0
+# mypy>=0.950
