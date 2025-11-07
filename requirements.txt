@@ -6,8 +6,8 @@ numpy>=1.21.0,<2.0.0
 # Visualization
 matplotlib>=3.5.0,<4.0.0
 
-# Optional: Advanced analysis
-# scipy>=1.7.0  # Uncomment if using advanced signal processing
+# Signal processing (required for NSCTS)
+scipy>=1.7.0
 
 # Development dependencies (install with: pip install -r requirements-dev.txt)
 # pytest>=7.0.0

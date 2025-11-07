@@ -56,6 +56,7 @@ This will run 3 demonstrations:
 - [**Quickstart Guide**](docs/YHWH_QUICKSTART.md) - 5-minute introduction
 - [**Integration Guide**](docs/YHWH_SOLITON_INTEGRATION_GUIDE.md) - Complete mathematical framework
 - [**ABCR Integration**](docs/YHWH_ABCR_INTEGRATION_SUMMARY.md) - Clinical applications
+- [**NSCTS-LiMp-Eopiez Integration**](docs/INTEGRATION_GUIDE.md) - Advanced entropy & symbolic processing
 - [**Hardware Spec**](docs/THZ_WEARABLE_HARDWARE_SPEC.md) - BOM, manufacturing, FDA pathway
 - [**Roadmap**](ROADMAP.md) - 4.5-year development plan
 - [**Contributing**](CONTRIBUTING.md) - How to contribute
@@ -113,6 +114,43 @@ This will run 3 demonstrations:
 | **Cognitive** | Thought, attention | Alpha (8-13 Hz) | Focus, meditation |
 | **Social** | Connection, empathy | Beta (13-30 Hz) | Social anxiety, autism |
 | **Divine-Unity** | Transcendence, coherence | Gamma (30-100 Hz) | Peak states, ego dissolution |
+
+---
+
+## 🧠 **NSCTS: NeuroSymbiotic Coherence Training System**
+
+The project now integrates three advanced systems for enhanced biometric processing:
+
+### **Integrated Pipeline**
+
+```
+Raw Biometrics → NSCTS → LiMp Entropy → Eopiez Vectorization → Enhanced Training
+```
+
+- **NSCTS**: Real-time biometric processing with coherence analysis, learning phase management, and EFL spatial memory
+- **LiMp**: Entropy engine for token-based transformations with SHA256 tracking and dynamic branching
+- **Eopiez**: Message vectorizer for symbolic state representation with 64-128D embeddings
+
+### **Quick Start**
+
+```bash
+# Run NSCTS demo
+python src/nscts_coherence_trainer.py
+
+# Run integrated pipeline demo
+python src/integration/nscts_limp_eopiez_bridge.py
+```
+
+### **Features**
+
+- ✅ 4 biometric streams (breath, heart, movement, neural)
+- ✅ Multi-modal coherence analysis with phase locking
+- ✅ Learning phase transitions (Attunement → Resonance → Symbiosis → Transcendence)
+- ✅ Entropy transformations (harmonic enhancement, phase alignment, complexity filtering)
+- ✅ Symbolic vector embeddings for consciousness states
+- ✅ Information density and motif analysis
+
+See [Integration Guide](docs/INTEGRATION_GUIDE.md) for complete documentation.
 
 ---
 
