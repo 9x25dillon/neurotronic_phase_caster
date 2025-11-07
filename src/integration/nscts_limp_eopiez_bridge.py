@@ -34,6 +34,21 @@ from src.nscts_coherence_trainer import (
 # Import LiMp components
 from entropy_engine.core import Token, EntropyNode, EntropyEngine
 
+# Import Eopiez components
+try:
+    from .eopiez_vectorizer import (
+        IntegratedEopiezVectorizer,
+        BiometricMotifToken,
+        VectorizedBiometricState
+    )
+except ImportError:
+    # When run as main script
+    from eopiez_vectorizer import (
+        IntegratedEopiezVectorizer,
+        BiometricMotifToken,
+        VectorizedBiometricState
+    )
+
 logger = logging.getLogger(__name__)
 
 
@@ -202,6 +217,13 @@ class NSCTSLiMpEopiezPipeline:
         # Initialize LiMp entropy engine
         self.entropy_engine = self._build_entropy_engine()
 
+        # Initialize Eopiez vectorizer (real implementation)
+        eopiez_config = self.config.get('eopiez', {})
+        self.eopiez_vectorizer = IntegratedEopiezVectorizer(
+            embedding_dim=eopiez_config.get('embedding_dim', 64),
+            julia_url=eopiez_config.get('julia_url', 'http://localhost:9000')
+        )
+
         # Adapters
         self.token_adapter = BiometricToTokenAdapter()
         self.motif_adapter = ConsciousnessToMotifAdapter()
@@ -209,7 +231,7 @@ class NSCTSLiMpEopiezPipeline:
         # State tracking
         self.enhanced_states: List[EnhancedBiometricState] = []
 
-        logger.info("NSCTS-LiMp-Eopiez Pipeline initialized")
+        logger.info("NSCTS-LiMp-Eopiez Pipeline initialized (Real Eopiez vectorization enabled)")
 
     def _build_entropy_engine(self) -> EntropyEngine:
         """Build the LiMp entropy transformation graph."""
@@ -272,12 +294,21 @@ class NSCTSLiMpEopiezPipeline:
             entropy_tokens[stream] = token
             entropy_traces[stream] = [e for _, e in self.entropy_engine.trace()]
 
-        # Step 3: Eopiez Symbolic Vectorization (simulated - would call Julia service)
-        motif_tokens = self.motif_adapter.state_to_motif_tokens(consciousness_state)
-        symbolic_vector, motif_analysis = self._simulate_eopiez_vectorization(motif_tokens)
+        # Step 3: Eopiez Symbolic Vectorization (real implementation with Julia/Python fallback)
+        detected_motifs, vectorized_state = self.eopiez_vectorizer.process_consciousness_state(consciousness_state)
 
-        # Calculate information density from motif analysis
-        information_density = motif_analysis.get("entropy_score", 0.5)
+        # Extract results
+        symbolic_vector = vectorized_state.vector
+        information_density = vectorized_state.information_density
+        motif_analysis = {
+            "detected_motifs": {m.motif_type.value: {"weight": m.weight, "confidence": m.confidence} for m in detected_motifs},
+            "entropy_score": vectorized_state.entropy_score,
+            "information_density": information_density,
+            "embedding_dim": len(symbolic_vector),
+            "num_motifs": len(detected_motifs),
+            "symbolic_expression": vectorized_state.symbolic_expression,
+            "motif_configuration": vectorized_state.motif_configuration
+        }
 
         # Create enhanced state
         enhanced_state = EnhancedBiometricState(
@@ -292,46 +323,6 @@ class NSCTSLiMpEopiezPipeline:
         self.enhanced_states.append(enhanced_state)
 
         return enhanced_state
-
-    def _simulate_eopiez_vectorization(
-        self,
-        motif_tokens: List[Dict],
-        embedding_dim: int = 64
-    ) -> Tuple[np.ndarray, Dict]:
-        """
-        Simulate Eopiez vectorization (in production, would call Julia API).
-
-        Returns: (symbolic_vector, motif_analysis)
-        """
-        # Create embedding from motif tokens
-        vector = np.zeros(embedding_dim)
-
-        for i, token in enumerate(motif_tokens):
-            # Hash token properties to generate vector components
-            token_str = json.dumps(token, sort_keys=True)
-            hash_val = int.from_bytes(token_str.encode(), 'big') % (2**32)
-
-            # Distribute hash across vector dimensions
-            np.random.seed(hash_val)
-            contribution = np.random.randn(embedding_dim) * token.get("entropy", 0.5)
-            vector += contribution
-
-        # Normalize
-        vector = vector / (np.linalg.norm(vector) + 1e-12)
-
-        # Generate analysis
-        motif_analysis = {
-            "detected_motifs": {
-                token["type"]: {"confidence": token.get("entropy", 0.5)}
-                for token in motif_tokens
-            },
-            "entropy_score": float(np.mean([t.get("entropy", 0.5) for t in motif_tokens])),
-            "information_density": float(np.std(vector)),
-            "embedding_dim": embedding_dim,
-            "num_motifs": len(motif_tokens)
-        }
-
-        return vector, motif_analysis
 
     async def get_enhanced_guidance(
         self,
@@ -414,7 +405,7 @@ class NSCTSLiMpEopiezPipeline:
             "integration_status": {
                 "nscts": "active",
                 "limp": "active",
-                "eopiez": "simulated (would connect to Julia service in production)"
+                "eopiez": f"active (Python implementation - Julia service: {self.eopiez_vectorizer.julia_client.available})"
             },
             "total_enhanced_states": len(self.enhanced_states)
         }
