@@ -17,7 +17,7 @@ setup(
     long_description_content_type="text/markdown",
     url="https://github.com/9x25dillon/neurotronic_phase_caster",
     author="Chris Sweigard",
-    author_email="chris@example.com",  # Update with actual email
+    author_email="neurotronic.phase.caster@gmail.com",
     license="MIT",
     classifiers=[
         "Development Status :: 3 - Alpha",
