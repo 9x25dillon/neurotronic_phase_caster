@@ -394,7 +394,7 @@ def test_variable_substrate_count(n_substrates):
 ### **Primary**
 - GitHub Issues: Technical discussions
 - GitHub Discussions: General questions
-- Email: chris@example.com (private matters)
+- Email: neurotronic.phase.caster@gmail.com (private matters)
 
 ### **Future** (as project grows)
 - Slack workspace
@@ -424,7 +424,7 @@ A: Yes! That's why it's open source. Please cite the repository and any publicat
 A: Yes (MIT license allows it), but please coordinate with the core team to avoid duplication.
 
 **Q: What if I find a critical safety issue?**
-A: Email chris@example.com immediately with subject "URGENT: Safety Issue". We'll patch within 24h.
+A: Email neurotronic.phase.caster@gmail.com immediately with subject "URGENT: Safety Issue". We'll patch within 24h.
 
 **Q: How long until PRs are reviewed?**
 A: Goal: 48 hours for small PRs, 1 week for large. Patience appreciated during busy periods.
