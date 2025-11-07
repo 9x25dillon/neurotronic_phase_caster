@@ -21,6 +21,16 @@ from .carryon_advanced_training import (
     CoherenceMemoryEvent
 )
 
+from .eopiez_vectorizer import (
+    BiometricMotifType,
+    BiometricMotifToken,
+    VectorizedBiometricState,
+    BiometricMotifDetector,
+    EopiezMessageVectorizer,
+    EopiezJuliaClient,
+    IntegratedEopiezVectorizer
+)
+
 __all__ = [
     # LiMp-Eopiez Integration
     'NSCTSLiMpEopiezPipeline',
@@ -34,5 +44,13 @@ __all__ = [
     'TAULSCoherenceController',
     'CoherenceEntropyRegulator',
     'CoherencePersona',
-    'CoherenceMemoryEvent'
+    'CoherenceMemoryEvent',
+    # Eopiez Integration
+    'BiometricMotifType',
+    'BiometricMotifToken',
+    'VectorizedBiometricState',
+    'BiometricMotifDetector',
+    'EopiezMessageVectorizer',
+    'EopiezJuliaClient',
+    'IntegratedEopiezVectorizer'
 ]
