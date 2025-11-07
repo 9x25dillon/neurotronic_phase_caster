@@ -1,12 +1,13 @@
-# NSCTS-LiMp-Eopiez Integration Guide
+# NSCTS Integration Guide
 
 ## Overview
 
-The Neurotronic Phase Caster project integrates three powerful systems for advanced biometric signal processing, entropy transformation, and symbolic state representation:
+The Neurotronic Phase Caster project integrates four powerful systems for advanced biometric signal processing, entropy transformation, symbolic state representation, and neural optimization:
 
 1. **NSCTS** (NeuroSymbiotic Coherence Training System) - Biometric processing and coherence analysis
 2. **LiMp** - Entropy engine for token-based transformations
 3. **Eopiez** - Message vectorizer for symbolic state representation
+4. **Carryon** - SYDV neural architecture with KFP optimization, TAULS control, and persona tracking
 
 ## Architecture
 
@@ -328,3 +329,175 @@ For component-specific issues, refer to respective repositories.
 **Author**: Randy Lynn / Claude Collaboration
 **Date**: November 2025
 **Version**: 1.0.0
+
+## Carryon Advanced Training Integration
+
+### Overview
+
+Carryon brings SYDV (Sydney Variant) neural architecture principles to NSCTS coherence training:
+
+- **KFP (Kinetic Force Principle)** - Optimizes toward minimal fluctuation intensity
+- **TAULS** (Trans-Algorithmic Universal Learning System) - Two-level adaptive control
+- **Entropy Regulation** - Maintains active stability under environmental stress
+- **Persona Tracking** - Builds user-specific coherence profiles
+- **Memory Events** - Records training sessions with consent policies
+
+### Advanced Training Usage
+
+```python
+from src.integration import AdvancedCoherenceTrainer
+import numpy as np
+from src.nscts_coherence_trainer import BiometricStream
+
+# Initialize advanced trainer with user identity
+trainer = AdvancedCoherenceTrainer(
+    user_id="user_001",
+    user_name="Alice"
+)
+
+# Prepare biometric data
+biometric_data = {
+    BiometricStream.BREATH: np.array([...]),
+    BiometricStream.HEART: np.array([...]),
+    BiometricStream.MOVEMENT: np.array([...]),
+    BiometricStream.NEURAL: np.array([...])
+}
+
+# Train with full SYDV optimization
+results = await trainer.train_with_optimization(
+    biometric_data,
+    target_coherence=0.75
+)
+
+# Access optimization results
+print(f"KFP Stability: {results['kfp_optimization']['stability_score']:.3f}")
+print(f"TAULS Adjustment: {results['tauls_control']['integrated_adjustment']:.4f}")
+print(f"Entropy: {results['entropy_regulation']['current_entropy']:.3f}")
+print(f"Training Intensity: {results['training_guidance']['target_intensity']:.3f}")
+```
+
+### Persona Tracking
+
+```python
+# Get user persona summary
+persona = trainer.get_persona_summary()
+print(f"Baseline Coherence: {persona['baseline_coherence']:.3f}")
+print(f"Preferred Learning Phases: {persona['preferred_phases']}")
+print(f"Total Sessions: {persona['training_sessions']}")
+
+# Get memory timeline
+timeline = trainer.get_memory_timeline(limit=10)
+for event in timeline:
+    print(f"{event['timestamp']}: {event['type']} - Δ{event['coherence_delta']:.3f}")
+```
+
+### KFP Optimization
+
+The Kinetic Force Principle optimizer stabilizes coherence by minimizing fluctuation intensity:
+
+```python
+from src.integration import KFPCoherenceOptimizer
+
+optimizer = KFPCoherenceOptimizer(
+    stability_weight=0.1,
+    momentum=0.9
+)
+
+# Perform optimization step
+metrics = optimizer.optimize_step(current_coherence=0.65)
+
+print(f"Fluctuation Intensity: {metrics['fluctuation_intensity']:.4f}")
+print(f"Kinetic Force: {metrics['kinetic_force']:.4f}")
+print(f"Stability Score: {metrics['stability_score']:.3f}")
+```
+
+### TAULS Control
+
+Two-level control system adapts training based on both immediate state and long-term patterns:
+
+```python
+from src.integration import TAULSCoherenceController
+
+controller = TAULSCoherenceController(learning_rate=0.01)
+
+# Get integrated control signal
+control = controller.integrated_control(state, target_coherence=0.75)
+
+print(f"Meta Control: {control['meta_adjustment']:.4f}")
+print(f"Auto Control: {control['auto_adjustment']:.4f}")
+print(f"Integrated: {control['integrated_adjustment']:.4f}")
+print(f"Mixing Weight: {control['mixing_weight']:.3f}")
+```
+
+### Entropy Regulation
+
+Modulates training intensity based on system entropy and environmental stress:
+
+```python
+from src.integration import CoherenceEntropyRegulator
+
+regulator = CoherenceEntropyRegulator(max_entropy_target=0.7)
+
+# Regulate training intensity
+regulation = regulator.regulate(state)
+
+print(f"Current Entropy: {regulation['current_entropy']:.3f}")
+print(f"Environmental Stress: {regulation['environmental_stress']:.3f}")
+print(f"Target Intensity: {regulation['target_intensity']:.3f}")
+print(f"Entropy Trend: {regulation['entropy_trend']}")
+```
+
+### Complete Integration Example
+
+```python
+from src.integration import AdvancedCoherenceTrainer, NSCTSLiMpEopiezPipeline
+
+# Option 1: Full SYDV optimization with persona tracking
+advanced_trainer = AdvancedCoherenceTrainer(
+    user_id="user_001",
+    user_name="Alice"
+)
+results = await advanced_trainer.train_with_optimization(biometric_data)
+
+# Option 2: Entropy + Symbolic processing without persona
+pipeline = NSCTSLiMpEopiezPipeline()
+enhanced_state = await pipeline.process_biometric_data(biometric_data)
+
+# Both provide comprehensive coherence optimization with different focuses
+```
+
+## System Comparison
+
+| Feature | NSCTS | + LiMp/Eopiez | + Carryon |
+|---------|-------|---------------|-----------|
+| Biometric Processing | ✅ | ✅ | ✅ |
+| Coherence Analysis | ✅ | ✅ | ✅ |
+| Learning Phases | ✅ | ✅ | ✅ |
+| Entropy Transformations | ❌ | ✅ | ✅ |
+| Symbolic Vectors | ❌ | ✅ | ✅ |
+| KFP Optimization | ❌ | ❌ | ✅ |
+| TAULS Control | ❌ | ❌ | ✅ |
+| Entropy Regulation | ❌ | ❌ | ✅ |
+| Persona Tracking | ❌ | ❌ | ✅ |
+| Memory Events | ❌ | ❌ | ✅ |
+
+## Integration Roadmap
+
+### Phase 1: Foundation (Complete)
+- ✅ NSCTS core implementation
+- ✅ LiMp entropy transformations
+- ✅ Eopiez symbolic vectorization
+- ✅ Carryon SYDV principles
+
+### Phase 2: Advanced Features (In Progress)
+- ⏳ Real-time Julia service integration (Eopiez)
+- ⏳ PyTorch-based KFP layers (full SYDV)
+- ⏳ Distributed training optimization
+- ⏳ Multi-user persona management
+
+### Phase 3: Production Deployment (Planned)
+- 🔜 Hardware integration (THz wearable)
+- 🔜 Clinical trial data collection
+- 🔜 Real-time biometric streaming
+- 🔜 Cloud-based persona storage
+

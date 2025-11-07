@@ -119,17 +119,18 @@ This will run 3 demonstrations:
 
 ## 🧠 **NSCTS: NeuroSymbiotic Coherence Training System**
 
-The project now integrates three advanced systems for enhanced biometric processing:
+The project now integrates four advanced systems for enhanced biometric processing and neural optimization:
 
 ### **Integrated Pipeline**
 
 ```
-Raw Biometrics → NSCTS → LiMp Entropy → Eopiez Vectorization → Enhanced Training
+Raw Biometrics → NSCTS → LiMp Entropy → Eopiez Vectorization → Carryon SYDV → Optimized Training
 ```
 
 - **NSCTS**: Real-time biometric processing with coherence analysis, learning phase management, and EFL spatial memory
 - **LiMp**: Entropy engine for token-based transformations with SHA256 tracking and dynamic branching
 - **Eopiez**: Message vectorizer for symbolic state representation with 64-128D embeddings
+- **Carryon**: SYDV neural architecture with KFP optimization, TAULS control, and persona tracking
 
 ### **Quick Start**
 
@@ -137,18 +138,28 @@ Raw Biometrics → NSCTS → LiMp Entropy → Eopiez Vectorization → Enhanced 
 # Run NSCTS demo
 python src/nscts_coherence_trainer.py
 
-# Run integrated pipeline demo
+# Run integrated pipeline demo (NSCTS + LiMp + Eopiez)
 python src/integration/nscts_limp_eopiez_bridge.py
+
+# Run advanced training demo (Full SYDV optimization)
+python src/integration/carryon_advanced_training.py
 ```
 
 ### **Features**
 
+**Core NSCTS:**
 - ✅ 4 biometric streams (breath, heart, movement, neural)
 - ✅ Multi-modal coherence analysis with phase locking
 - ✅ Learning phase transitions (Attunement → Resonance → Symbiosis → Transcendence)
-- ✅ Entropy transformations (harmonic enhancement, phase alignment, complexity filtering)
-- ✅ Symbolic vector embeddings for consciousness states
-- ✅ Information density and motif analysis
+- ✅ EFL spatial memory (topological defects, persistent resonances)
+
+**Advanced Integrations:**
+- ✅ Entropy transformations via LiMp (harmonic enhancement, phase alignment, complexity filtering)
+- ✅ Symbolic vector embeddings via Eopiez (64-128D consciousness state representation)
+- ✅ KFP optimization via Carryon (minimal fluctuation intensity)
+- ✅ TAULS control via Carryon (two-level adaptive training)
+- ✅ Entropy regulation via Carryon (active stability under stress)
+- ✅ Persona tracking (user-specific coherence profiles and memory events)
 
 See [Integration Guide](docs/INTEGRATION_GUIDE.md) for complete documentation.
 
