@@ -1,0 +1,6 @@
+[submodule "external/LiMp"]
+	path = external/LiMp
+	url = https://github.com/9x25dillon/LiMp.git
+[submodule "external/Eopiez"]
+	path = external/Eopiez
+	url = https://github.com/9x25dillon/Eopiez.git
