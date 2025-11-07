@@ -293,9 +293,11 @@ This project is licensed under the MIT License - see [LICENSE](LICENSE) file for
 
 **Project Lead:** Chris Sweigard
 
-**Email:** [contact info]
+**Email:** neurotronic.phase.caster@gmail.com
 
 **GitHub:** [@9x25dillon](https://github.com/9x25dillon)
+
+**Issues:** https://github.com/9x25dillon/neurotronic_phase_caster/issues
 
 **Purpose:** This project exists to help people suffering from mental illness, to advance neuroscience, and to prepare humanity for safe AI integration by making consciousness measurable, treatable, and optimizable.
 
