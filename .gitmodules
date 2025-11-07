@@ -4,3 +4,6 @@
 [submodule "external/Eopiez"]
 	path = external/Eopiez
 	url = https://github.com/9x25dillon/Eopiez.git
+[submodule "external/carryon"]
+	path = external/carryon
+	url = https://github.com/9x25dillon/carryon.git
