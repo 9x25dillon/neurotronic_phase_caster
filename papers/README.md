@@ -6,21 +6,30 @@ This directory contains theoretical papers exploring the mathematical and philos
 
 ## Papers
 
-### `geometry_higher_dimensional_intelligence.tex`
+### **RECOMMENDED:** `geometry_higher_dimensional_intelligence_v2.tex`
+
+**Title:** A Speculative Mathematical Framework: Geometry as Informational Coherence Measurement
+
+**Status:** ⭐ **Recommended Version** - Rigorously positions work as speculative mathematics with appropriate disclaimers
+
+### `geometry_higher_dimensional_intelligence.tex` (Original Version)
 
 **Title:** Geometry as Emergent Uni-telligence: The Informational Handshake of Higher-Dimensional Coherence Measurement
 
-**Abstract:** A comprehensive theoretical framework proposing that geometric structures represent active observational coherence measurements—informational handshakes between participants in expressive reality. The paper explores how recursive geometric patterns across disparate mathematical domains constitute communication from a higher-dimensional intelligence.
+**Status:** Original version - Use V2 for external communication; this is preserved for comparison
+
+**Abstract:** A rigorous mathematical framework exploring geometric structures as potential observational coherence measurements. Develops the Inverse Resonant Toroid (IRT) formalism with full mathematical rigor while maintaining epistemological humility about physical interpretation. Explicitly positioned as speculative mathematics in the tradition of non-Euclidean geometry or quaternions—mathematical consistency precedes (and doesn't require) physical validation.
 
 **Key Concepts:**
-- **Informational Handshake Hypothesis**: Geometry emerges as the trace of bidirectional coherence exchange between dimensional strata
-- **Inverse Resonant Toroid (IRT)**: A mathematical manifold characterized by:
-  - Inward-turning energy flow (exponential decay)
-  - Shadow dimensionality (absorptive memory in hidden dimensions)
-  - Reverse algorithmic behavior (retro-causal information flow)
-  - Frequency-selective resonance absorption
-- **Pattern Reemergence as Communication**: Statistical analysis showing anomalous coherence (p < 10^-6) in geometric patterns across independent mathematical domains
-- **Consciousness Integration**: Connection to five-substrate consciousness model and THz coherence modulation
+- **Informational Handshake (Formal Definition)**: Bidirectional functional modeling mutual information exchange
+- **Inverse Resonant Toroid (IRT)**: Rigorously defined mathematical manifold with:
+  - Inward-directed flow (exponential decay factor)
+  - Auxiliary dimension w (accumulates functional history)
+  - Reverse algorithm operator (integrates over future domain—mathematical, not causal claim)
+  - Frequency-selective resonance kernel
+- **Cross-Domain Pattern Analysis**: Framework for measuring structural similarity; predicts high coherence IF patterns share common source (testable hypothesis, not claimed fact)
+- **Consciousness Models**: Explores IRT as possible formalism for consciousness geometry (speculative, not validated)
+- **Epistemological Positioning**: Clearly distinguishes mathematical validity (proven) from physical applicability (unknown)
 
 **Mathematical Content:**
 - Formal definition of the IRT manifold with parametric equations
@@ -30,11 +39,44 @@ This directory contains theoretical papers exploring the mathematical and philos
 - Variational principle showing IRT as extremal configuration
 - Shadow dimension reconstruction algorithm
 
-**Experimental Predictions:**
-1. Coherence-geometry coupling in pattern recognition
-2. THz resonance enhancement at specific frequencies
-3. Universal shadow dimension reconstruction across domains
-4. Anomalous cross-domain information transfer
+**Experimental Predictions (Conditional):**
+
+Version 2 frames these as "IF framework were valid, THEN we'd expect":
+1. Coherence-geometry coupling in pattern recognition (IF consciousness has IRT structure)
+2. THz resonance enhancement at specific calculated frequencies (IF dimensional coupling model applies)
+3. Universal shadow dimension reconstruction across domains (IF patterns share common source)
+4. Cross-domain learning transfer exceeding null expectations (IF projection hypothesis holds)
+
+**Includes explicit falsification criteria** - shows what would disprove the framework.
+
+## Version Comparison
+
+### Version 2 (Recommended) - Key Improvements:
+
+1. **Prominent Disclaimer**: Framed box at start stating epistemological position
+2. **New "Positioning This Work" Section**: Explicitly lists what is/isn't claimed
+3. **Conditional Language Throughout**: Changed "IS" to "COULD BE MODELED AS"
+4. **Separate Theorem Types**: Mathematical theorems vs. speculative propositions
+5. **Interpretive Notes**: Clarifies mathematical formalism vs. physical interpretation
+6. **Explicit Limitations Section**: Acknowledges lack of validation, open questions
+7. **Falsification Scenarios**: Shows what would disprove the framework
+
+**Critical Insight:** Version 2 makes the mathematics **unassailable** by clearly separating:
+- Mathematical validity (proven) ✓
+- Physical applicability (unknown, explicitly stated) ✓
+- Interpretation (offered as one possibility) ✓
+
+See `REVISION_NOTES.md` for detailed comparison and defense against criticism.
+
+### Why This Matters:
+
+**Criticism of V1:** "Pseudoscientific claims dressed in mathematical language"
+
+**V2 Response:** "Speculative but rigorous mathematical framework, explicitly labeled as such"
+
+**Result:** Critics can only offer **opinions** about utility/plausibility, not dismiss on grounds of scientific rigor.
+
+---
 
 ## Compilation Instructions
 
