@@ -78,3 +78,9 @@ logs/
 tmp/
 temp/
 *.tmp
+
+# NPBS/QINCRS simulation outputs
+qincrs_simulation.png
+npbs_validation_log.json
+bridge_state_*.png
+*_validation_log.json
