@@ -9,6 +9,13 @@ matplotlib>=3.5.0,<4.0.0
 # Signal processing (required for NSCTS)
 scipy>=1.7.0
 
+# Octitrix FastAPI Server dependencies
+fastapi>=0.104.0
+uvicorn>=0.24.0
+pydantic>=2.0.0
+pyserial>=3.5
+requests>=2.31.0
+
 # Development dependencies (install with: pip install -r requirements-dev.txt)
 # pytest>=7.0.0
 # black>=22.0.0
