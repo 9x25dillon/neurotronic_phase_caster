@@ -103,25 +103,74 @@ def test_corrected_baseline_three_harmonics(tmp_path):
 
 
 def test_entire_modal_scan_and_clearance():
-    m = cad.check_modes(71.5)
-    assert len(m) == 12
-    assert [m[idx] for idx in ((0, 1), (1, 1), (2, 1), (0, 2))] == pytest.approx(
+    # p = 0 regression against the original TM_mn0 values at 71.5 um.
+    m = cad.cavity_modes(71.5, f_max=1100)
+    assert [m["TM", *idx, 0] for idx in ((0, 1), (1, 1), (2, 1), (0, 2))] == pytest.approx(
         [453.90, 723.22, 969.33, 1041.90], abs=0.015
     )
-    for r, mode in [(78, "TM210"), (85, "TM110")]:
+    # Axial modes: h = 70.7 um puts TM111 (degenerate with TE011) in the h=3 guard.
+    assert cad.axial_step(cad.TS) == pytest.approx(599.675, abs=0.001)
+    assert m["TM", 1, 1, 1] == pytest.approx(939.50, abs=0.01)
+    assert m["TE", 0, 1, 1] == pytest.approx(m["TM", 1, 1, 1], rel=1e-12)  # j'_01 = j_11
+    assert not cad.slot_coupled(("TE", 0, 1, 1)) and cad.slot_coupled(("TM", 1, 1, 1))
+    for r, mode in [(71.5, "TM111"), (78, "TM210"), (85, "TM110")]:
         with pytest.raises(ValueError, match=mode):
             cad.check_modes(r)
-    clear = []
-    for r in np.arange(70.0, 95.1, 0.5):
-        try:
-            cad.check_modes(r)
-        except ValueError:
-            continue
-        clear.append(r)
-    assert clear == [70, 70.5, 71, 71.5, 72, 72.5, 90.5]
+    # 70 um clears at nominal thickness only; TM111 enters the guard inside +2 um.
+    cad.check_modes(70.0, h_tol=0)
+    with pytest.raises(ValueError, match="TM111 enters a guard at substrate 70.829"):
+        cad.check_modes(70.0)
+    assert cad.clear_radii(60.0, 95.0, 0.05, h_tol=0) == pytest.approx(
+        np.round(np.arange(66.65, 70.0501, 0.05), 2)
+    )
+    assert cad.clear_radii(60.0, 95.0, 0.05) == pytest.approx(
+        np.round(np.arange(68.55, 68.8501, 0.05), 2)
+    )
     info = cad.preflight(cad.Design())
-    assert info["nominal_clearance_um"] == pytest.approx(13.4)
-    assert info["corner_clearance_um"] > 13.0
+    assert cad.Design().rc == 68.75
+    assert info["modes_GHz"] == pytest.approx(
+        {"TM010": 472.06, "TE111": 700.17, "TM110": 752.15, "TM011": 763.18, "TE211": 847.97},
+        abs=0.01,
+    )
+    assert info["clear_substrate_window_um"] == pytest.approx([68.5074, 72.8954], abs=1e-4)
+    assert info["nominal_clearance_um"] == pytest.approx(10.65)
+    assert info["corner_clearance_um"] == pytest.approx(10.3812, abs=1e-4)
+    assert info["via_count"] == 22
+
+
+def test_mode_enumeration_is_complete():
+    # Independent brute force: generous Bessel root tables, every p, no early exits.
+    from scipy.special import jn_zeros, jnp_zeros
+
+    rc, h, f_max = 68.75, 69.3, 1500.0
+    scale = c / (2 * np.pi * rc * 1e-6 * np.sqrt(12.5)) / 1e9
+    fz = cad.axial_step(h)
+    brute = {}
+    for family, zeros, p0 in (("TM", jn_zeros, 0), ("TE", jnp_zeros, 1)):
+        for mm in range(30):
+            for n, x in enumerate(zeros(mm, 30), 1):
+                for p in range(p0, 30):
+                    f = np.hypot(x * scale, p * fz)
+                    if f <= f_max:
+                        brute[family, mm, n, p] = f
+    assert cad.cavity_modes(rc, h, f_max) == pytest.approx(brute, rel=1e-12)
+
+
+@pytest.mark.parametrize("rc", [67.0, 68.5, 68.75, 69.0, 70.0])
+def test_thickness_window_matches_sampling(rc):
+    lo, hi, below, above = cad.thickness_window(rc)
+    assert lo < cad.TS < hi and (below, above) == ("TE211", "TM111")
+
+    def inside(h):
+        return any(
+            cad.slot_coupled(k) and any(a <= f <= b for a, b in cad.guarded_bands())
+            for k, f in cad.cavity_modes(rc, h).items()
+        )
+
+    assert not any(inside(h) for h in np.linspace(lo + 1e-6, hi - 1e-6, 41))
+    # The window edges are exact: 1 nm outside, a coupled mode sits in a guard band.
+    assert all(inside(h) for h in (lo - 1e-3, lo - 1e-6, hi + 1e-6, hi + 1e-3))
+    assert cad.thickness_window(71.5)[:2] == (cad.TS, cad.TS)  # nominal itself forbidden
 
 
 def test_no_root_and_singularity():

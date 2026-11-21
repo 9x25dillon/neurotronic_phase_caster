@@ -23,15 +23,23 @@ Against Randy Lynn’s design specification, §§1, 3, 4 and 5. **L0** covers id
 
 ## §4 · Harmonic guards and layout clearance
 
-**L1.** Evaluate $f_{mn0}=cj_{mn}/(2\pi R_c\sqrt{12.5})$ for all $4\times3=12$ positive Bessel roots with $m=0\ldots3$, $n=1\ldots3$. The guards $[0.97h(296.1),1.03h(307.7)]$ equal $[287.217,316.931]$, $[574.434,633.862]$ and $[861.651,950.793]$ GHz.
+**L1 cavity model.** The back reflector, top metallization and via fence form a pillbox of radius $R_c$ and height $h$. It supports $f_{mnp}=\frac{c}{2\pi\sqrt{12.5}}\sqrt{(x_{mn}/R_c)^2+(p\pi/h)^2}$ with $x_{mn}=j_{mn}$ for TM$_{mnp}$, $p\ge0$, and $x_{mn}=j'_{mn}$ for TE$_{mnp}$, $p\ge1$. The axial step is $c/(2h\sqrt{12.5})=599.675$ GHz at $h=70.7$ µm, so $p=1$ modes reach the second and third guards. The check enumerates every mode up to the top guard edge, with no fixed $m$, $n$ or $p$ limit. A brute-force test confirms completeness.
+
+**L1 coupling rule.** The circumferential slot field is radial, so its equivalent magnetic current is azimuthal. It couples through $H_\phi$ at the top wall. TE$_{0np}$ has $H_\phi\equiv0$ and is excluded. Every other family is checked. The feed channel, films and port gaps break this symmetry, and HFSS remains the arbiter.
+
+**L1 guards.** The guards $[0.97h(296.1),1.03h(307.7)]$ equal $[287.217,316.931]$, $[574.434,633.862]$ and $[861.651,950.793]$ GHz. A radius passes only if no slot-coupled mode enters a guard at nominal $h$ or anywhere in $h=70.7\pm2$ µm, the step-7 thinning tolerance. Each $(\text{mode},\text{band})$ pair forbids the closed interval $h\in[p k/\sqrt{f_{hi}^2-f_r^2},\,p k/\sqrt{\max(f_{lo}^2-f_r^2,0)}]$, where $k=c/(2\sqrt{12.5})$ and $f_r$ is the transverse cutoff. The clear thickness window is therefore exact, not sampled.
 
 | $R_c$ (µm) | L1 result |
 |---|---|
-| 71.5 | Pass. TM₀₁₀ 453.90, TM₁₁₀ 723.22, TM₂₁₀ 969.33 and TM₀₂₀ 1041.90 GHz. TM₂₁₀ clears the guarded upper edge by $969.33-950.793=18.54$ GHz. |
-| 78.0 | Reject. TM₂₁₀ = 888.55 GHz enters the third-harmonic band. |
-| 85.0 | Reject. TM₁₁₀ = 608.36 GHz and TM₀₂₀ = 876.42 GHz enter the second and guarded third bands. |
+| 71.5 | Reject (superseded value). TM₁₁₁ = 939.50 GHz lies in the third guard at nominal $h$. It is degenerate with the uncoupled TE₀₁₁ because $j'_{01}=j_{11}$. It stays inside over the whole $\pm2$ µm range, at 950.74–929.06 GHz. The earlier TM$_{mn0}$-only scan passed this radius. |
+| 70.0 | Nominal pass, tolerance reject. TM₁₁₁ enters the third guard at $h=70.829$ µm. |
+| **68.75** | **Pass (new default).** Modes below the top guard: TM₀₁₀ 472.06, TE₁₁₁ 700.17, TM₁₁₀ 752.15, TM₀₁₁ 763.18 and TE₂₁₁ 847.97 GHz. TE₂₁₁ is 13.68 GHz below the third guard. TM₁₁₁ = 961.95 GHz is 11.15 GHz above it. The clear window is $h\in[68.507,72.895]$ µm, a margin of $-2.193/+2.195$ µm limited by TE₂₁₁ and TM₁₁₁. |
+| 78.0 | Reject. TM₂₁₀ = 888.55 GHz enters the third guard. |
+| 85.0 | Reject. TM₁₁₀ = 608.36 GHz and TM₀₂₀ = 876.42 GHz enter the second and third guards. |
 
-**L1.** On a $70$–$95$ µm grid at $0.5$ µm spacing, $70$ through $72.5$ µm and $90.5$ µm pass. The inner via edge is $71.5-5=66.5$ µm. Clearance is $66.5-(46.6+5+1.5)=13.40$ µm nominal and $66.5-53.369=13.13$ µm to the outermost drawn film corner. With the spec’s $30$ µm feed opening, $1+\lceil(2\pi R_c-30)/20\rceil=22$ vias give $19.964$ µm ordinary pitch. A radius sweep sizes its via count for the largest radius.
+**L1 feasible radii.** On a $60$–$95$ µm grid at $0.05$ µm, $66.65$–$70.05$ µm clear at nominal $h$ only. Only $68.55$–$68.85$ µm clear over $\pm2$ µm. $68.75$ µm balances the two thickness margins and becomes the default. The radius window is $\pm0.15$ µm wide. That is comparable to the L1 uncertainty in the effective wall radius of a $10$ µm via fence at $19$ µm pitch, so confirm it with an HFSS $R_c$ sweep across $68.55$–$68.85$ µm. Either tightening the thinning tolerance or relaxing the third guard widens the window. `--thickness-tol-um 0` restores a nominal-only check.
+
+**L1 clearance.** The inner via edge is $68.75-5=63.75$ µm. Clearance is $63.75-(46.6+5+1.5)=10.65$ µm nominal and $63.75-53.369=10.38$ µm to the outermost drawn film corner. With the spec’s $30$ µm feed opening, $1+\lceil(2\pi R_c-30)/20\rceil=22$ vias give $19.141$ µm ordinary pitch. A radius sweep sizes its via count for the largest radius.
 
 ## §5 · Process, extraction and verification
 
@@ -39,11 +47,11 @@ Against Randy Lynn’s design specification, §§1, 3, 4 and 5. **L0** covers id
 
 **L1 extraction.** The riser starts at $t_{metal}$ inside the CPW. The subcollector begins at $R_{in}$. Full plate overlap gives $C_{MIM}=\epsilon_0(3.9)(60\,\mu m)^2/(100\,nm)=1.243$ pF. Solid cross-sections and AEDT strict validation check intersections. Embedded Jones fields give broadside AR. Radiation uses imported $\eta_o=P_{rad,o}/P_{acc,o}$ and the complex radiation matrix for the actual drive. HB reports $P_{acc,h}=\Re(V_h^\dagger I_h)/2$ and $P_{R_s}=R_s\sum_{h,p}|I_{h,p}|^2/2$. At $\delta=0.05$, $\epsilon=j\omega C\delta/[2(Y_e-Y_o)]=0.001528+j0.000414$ for the spec’s $Y_e-Y_o=50.6+j186.8$ mS.
 
-**L1 synthetic benchmark.** Section 2 supplies $G_o=0.91+0.10=1.01$ mS and $B_o=79.5-93.4=-13.9$ mS. The fixture assumes $C_t=10$ fF, giving $L_t=[\omega_0(\omega_0C_t-B_o)]^{-1}=16.199$ pH. It uses the §1 narrowband slope $a_{RF}=a\cos(2\pi f\tau)=16.922$ mS at $300$ GHz and $0.2$ ps, keeps the DC-calibrated cubic coefficient, and imports a synthetic efficiency of $0.10$. The three-harmonic solve gives **300.014 GHz, 180.000°, amplitude ratio 1.000, 11.243 µW radiated and 0.16841 mW series loss**. **L0 verification.** All 16 pytest cases passed. AEDT Desktop was unavailable. Physical R2 loss, spectra, polarization and the device stability verdict await field exports.
+**L1 synthetic benchmark.** Section 2 supplies $G_o=0.91+0.10=1.01$ mS and $B_o=79.5-93.4=-13.9$ mS. The fixture assumes $C_t=10$ fF, giving $L_t=[\omega_0(\omega_0C_t-B_o)]^{-1}=16.199$ pH. It uses the §1 narrowband slope $a_{RF}=a\cos(2\pi f\tau)=16.922$ mS at $300$ GHz and $0.2$ ps, keeps the DC-calibrated cubic coefficient, and imports a synthetic efficiency of $0.10$. The three-harmonic solve gives **300.014 GHz, 180.000°, amplitude ratio 1.000, 11.243 µW radiated and 0.16841 mW series loss**. **L0 verification.** All 22 pytest cases passed. AEDT Desktop was unavailable. Physical R2 loss, spectra, polarization and the device stability verdict await field exports.
 
 ### Remaining assumptions
 
-- **L1 physical model.** Ideal circular walls screen the finite fence. Isotropic, lossless dielectrics, stock AEDT gold, equipotential mesa stubs, a gap-free uncoated $6$ mm Si hemisphere with zero extension and $\epsilon_r=11.7$. Broadside is $+z$ for the cavity and $-z$ for the lens. Contact resistance and film resistivity require L2 measurements.
+- **L1 physical model.** Ideal circular PEC walls at the via-centre radius screen the finite fence. The cavity has PEC top and bottom walls. Slot coupling follows the azimuthal-symmetry rule of §4. Isotropic, lossless dielectrics, stock AEDT gold, equipotential mesa stubs, a gap-free uncoated $6$ mm Si hemisphere with zero extension and $\epsilon_r=11.7$. Broadside is $+z$ for the cavity and $-z$ for the lens. Contact resistance and film resistivity require L2 measurements.
 - **L1 drawing.** The CPW films center at $46.6+2.3=48.9$ µm. Contacts use $1.5$ µm overlap, $0.25$ µm shoulders and $2$ µm tapers. Strap feet occupy $x=57$–$59$ and $|y|=5.5$–$7$ µm in the local feed frame, with $1.2$ µm air clearance. The choke runs from ring mean to riser center. Short MIM tongues and the pad-edge RL reference represent the bias hookup.
 - **L1 device.** Fixed junction DC voltage and temperature. Default production HB uses the memoryless midpoint cubic. An optional causal delay applies $(1-s\tau/2)/(1+s\tau/2)$ to conduction in HB and Nyquist. Off-midpoint HB holds the junction DC voltage fixed during rectification. Physical powers remain L2.
 - **L0 solver settings.** Discrete sweeps cover $1$–$100$, $100$–$450$ and $450$–$950$ GHz at nominal $1$ GHz spacing. Mesh adaptation uses $300/600/900$ GHz and $\Delta S=0.01$. FE-BI encloses the device. Far-field steps are $2°$ cavity and $1°$ lens. HB uses peak phasors, $H=3$, $8H+1=25$ time samples, a $280$–$315$ GHz root window and $1\%$ mismatch increments. The analytic window is $220$–$380$ GHz.

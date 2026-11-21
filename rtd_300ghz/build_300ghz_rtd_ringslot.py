@@ -12,12 +12,13 @@ import json
 import re
 from dataclasses import dataclass
 from importlib.metadata import version
-from math import ceil, cos, pi, radians, sin
+from itertools import count as count_from
+from math import ceil, cos, hypot, pi, radians, sin, sqrt
 from pathlib import Path
 
 import numpy as np
 from scipy.constants import c, epsilon_0
-from scipy.special import jn_zeros
+from scipy.special import jn_zeros, jnp_zeros
 from shapely import affinity, remove_repeated_points
 from shapely.geometry import Point, Polygon, box
 from shapely.ops import unary_union
@@ -27,6 +28,8 @@ R2_LAYOUT = "cpw_gap"
 PYAEDT_VERSION = "1.10.0"  # L0 locked/inspected distribution interface
 RM, RIN, ROUT = 46.6, 44.6, 48.6
 TM, TS, CHOKE = 0.8, 70.7, 95.8
+TS_TOL = 2.0  # L2 thinning tolerance from section 5 step 7, um
+EPS_SUB = 12.5  # L1 InP relative permittivity
 MESA, HM, OVERLAP = 1.1, 0.48, 1.5
 GAP_LO, GAP_HI = 0.295, 0.3023  # L1 follows the collector stack, in um
 F0BAND = (296.1, 307.7)
@@ -43,7 +46,7 @@ def disk(radius):
 class Design:
     variant: str = VARIANT
     layout: str = R2_LAYOUT
-    rc: float = 71.5
+    rc: float = 68.75  # L1: centres the coupled-mode thickness window, see check_modes
     delta: float | None = None
 
     def __post_init__(self):
@@ -66,31 +69,150 @@ class Design:
         return self.angle / 2 + 180.0
 
 
-def cavity_modes(rc):
-    if rc <= 0:
-        raise ValueError("Fence radius must be positive.")
-    return {
-        (m, n): chi * c / (2 * pi * rc * 1e-6 * np.sqrt(12.5)) / 1e9
-        for m in range(4)
-        for n, chi in enumerate(jn_zeros(m, 3), start=1)
-    }
-
-
 def guarded_bands():
     return [(h * F0BAND[0] * 0.97, h * F0BAND[1] * 1.03) for h in (1, 2, 3)]
 
 
-def check_modes(rc):
-    modes = cavity_modes(rc)
+def _bessel_roots(m, xmax, derivative):
+    """All positive roots of J_m (or J_m') not above xmax. J_0'(0)=0 is excluded."""
+    count = 4
+    while True:
+        roots = (jnp_zeros if derivative else jn_zeros)(m, count)
+        if roots[-1] > xmax:
+            return roots[roots <= xmax]
+        count *= 2
+
+
+def transverse_modes(rc, f_max):
+    """(family, m, n) -> cutoff in GHz of an ideal PEC circular wall of radius rc um."""
+    if rc <= 0:
+        raise ValueError("Fence radius must be positive.")
+    scale = c / (2 * pi * rc * 1e-6 * sqrt(EPS_SUB)) / 1e9
+    out = {}
+    for family, derivative in (("TM", False), ("TE", True)):
+        # First roots of J_m and J_m' increase with m, so the first empty order ends the scan.
+        for m in count_from(0):
+            roots = _bessel_roots(m, f_max / scale, derivative)
+            if not len(roots):
+                break
+            out.update({(family, m, n): x * scale for n, x in enumerate(roots, 1)})
+    return out
+
+
+def axial_step(h):
+    """GHz added per axial index p in the substrate of thickness h um."""
+    return c / (2 * h * 1e-6 * sqrt(EPS_SUB)) / 1e9
+
+
+def cavity_modes(rc, h=TS, f_max=None):
+    """Every ideal pillbox resonance up to f_max: TM_mnp for p >= 0, TE_mnp for p >= 1.
+
+    L1: PEC reflector, PEC top metallization and an ideal circular fence wall.
+    Keys are (family, m, n, p); see mode_label for the conventional name.
+    """
+    if h <= 0:
+        raise ValueError("Substrate thickness must be positive.")
+    f_max = guarded_bands()[-1][1] if f_max is None else f_max
+    fz = axial_step(h)
+    modes = {}
+    for (family, m, n), fr in transverse_modes(rc, f_max).items():
+        p = 0 if family == "TM" else 1
+        while (f := hypot(fr, p * fz)) <= f_max:
+            modes[(family, m, n, p)] = f
+            p += 1
+    return modes
+
+
+def mode_label(mode):
+    family, *index = mode
+    return family + ("".join(map(str, index)) if max(index) < 10 else str(tuple(index)))
+
+
+def slot_coupled(mode):
+    """L1 symmetry rule. The circumferential slot's aperture field is radial, so its
+    equivalent magnetic current is azimuthal and couples only through H_phi at the top
+    wall. TE_0np has H_phi = 0 everywhere; every other TM/TE family has H_phi != 0 there.
+    The feed channel, films and port gaps break this symmetry; HFSS remains the arbiter."""
+    return not (mode[0] == "TE" and mode[1] == 0)
+
+
+def thickness_window(rc, h0=TS):
+    """Exact substrate-thickness interval around h0 that keeps every slot-coupled
+    p >= 1 mode out of every guard band. Returns (h_lo, h_hi, blocker_lo, blocker_hi).
+
+    f_mnp = hypot(fr, p*k/h) is monotone in h, so each (mode, band) pair forbids the
+    closed interval h in [p*k/sqrt(hi^2-fr^2), p*k/sqrt(max(lo^2-fr^2, 0))].
+    An empty window, (h0, h0), means the nominal thickness itself is forbidden.
+    """
+    k = axial_step(1.0)  # GHz*um
+    bands = guarded_bands()
+    lo, hi, below, above = 0.0, np.inf, None, None
+    for (family, m, n), fr in transverse_modes(rc, bands[-1][1]).items():
+        if not slot_coupled((family, m)):
+            continue
+        for band_lo, band_hi in bands:
+            if band_hi <= fr:
+                continue
+            fz_lo, fz_hi = sqrt(max(band_lo**2 - fr**2, 0.0)), sqrt(band_hi**2 - fr**2)
+            for p in count_from(1):
+                h_lo = p * k / fz_hi
+                h_hi = p * k / fz_lo if fz_lo > 0 else np.inf
+                if h_lo >= min(hi, 10 * h0):
+                    break
+                name = mode_label((family, m, n, p))
+                if h_hi < h0:
+                    if h_hi > lo:
+                        lo, below = h_hi, name
+                elif h_lo > h0:
+                    hi, above = h_lo, name
+                else:
+                    return h0, h0, name, name
+    return lo, hi, below, above
+
+
+def check_modes(rc, h=TS, h_tol=TS_TOL):
+    """Reject a fence radius if a slot-coupled pillbox mode enters a 3% harmonic guard
+    at the nominal thickness, or anywhere in h +/- h_tol (h_tol=0 checks nominal only)."""
+    modes = cavity_modes(rc, h)
     hits = [
-        f"TM{m}{n}0={freq:.3f} GHz at h={h}"
-        for (m, n), freq in modes.items()
-        for h, (lo, hi) in enumerate(guarded_bands(), 1)
+        f"{mode_label(mode)}={freq:.3f} GHz at h={k}"
+        for mode, freq in modes.items()
+        if slot_coupled(mode)
+        for k, (lo, hi) in enumerate(guarded_bands(), 1)
         if lo <= freq <= hi
     ]
+    if not hits and h_tol > 0:
+        h_lo, h_hi, below, above = thickness_window(rc, h)
+        if h - h_lo < h_tol:
+            hits.append(f"{below} enters a guard at substrate {h_lo:.3f} um > {h - h_tol:g} um")
+        if h_hi - h < h_tol:
+            hits.append(f"{above} enters a guard at substrate {h_hi:.3f} um < {h + h_tol:g} um")
     if hits:
         raise ValueError(f"L1 R_c={rc:g} um violates 3% guards: " + ", ".join(hits))
     return modes
+
+
+def clear_radii(lo, hi, step, h_tol=TS_TOL):
+    """Radii on an inclusive grid that pass check_modes."""
+    out = []
+    for rc in np.round(np.arange(lo, hi + step / 2, step), 6):
+        try:
+            check_modes(rc, h_tol=h_tol)
+        except ValueError:
+            continue
+        out.append(float(rc))
+    return out
+
+
+def _ranges(values, step):
+    """Compress a sorted grid into 'a-b' runs."""
+    runs = []
+    for v in values:
+        if runs and v - runs[-1][1] <= step * 1.5:
+            runs[-1][1] = v
+        else:
+            runs.append([v, v])
+    return ", ".join(f"{a:g}" if a == b else f"{a:g}-{b:g}" for a, b in runs)
 
 
 def rot(g, angle):
@@ -325,8 +447,8 @@ def r2_estimates(d):
     }
 
 
-def preflight(d, intervals=None):
-    mode = check_modes(d.rc) if d.variant == "cavity_via" else {}
+def preflight(d, intervals=None, h_tol=TS_TOL):
+    mode = check_modes(d.rc, h_tol=h_tol) if d.variant == "cavity_via" else {}
     g = layout(d)
     inner, outer = g["inner"], g["ground"]
     if inner.geom_type != "Polygon" or outer.geom_type != "Polygon" or inner.distance(outer) < 1e-5:
@@ -372,7 +494,13 @@ def preflight(d, intervals=None):
             if Point(cx, cy).distance(outer.boundary) < 5 or not outer.contains(Point(cx, cy)):
                 raise ValueError("Via edge intersects a CPW clearance or leaves its ground land.")
         info.update(
-            modes_GHz={f"TM{m}{n}0": float(f) for (m, n), f in mode.items()},
+            modes_GHz={
+                mode_label(k): float(f) for k, f in sorted(mode.items(), key=lambda x: x[1])
+            },
+            slot_uncoupled_modes=[mode_label(k) for k in mode if not slot_coupled(k)],
+            substrate_um=TS,
+            substrate_tolerance_um=h_tol,
+            clear_substrate_window_um=[float(x) for x in thickness_window(d.rc)[:2]],
             bands_GHz=guarded_bands(),
             inner_via_edge_um=d.rc - 5,
             nominal_clearance_um=d.rc - 5 - (RM + 5 + OVERLAP),
@@ -939,7 +1067,13 @@ def main():
     parser.add_argument("action", choices=["preflight", "api-check", "build"])
     parser.add_argument("--variant", choices=["cavity_via", "si_lens"], default=VARIANT)
     parser.add_argument("--r2-layout", choices=["cpw_gap", "flank_10deg"], default=R2_LAYOUT)
-    parser.add_argument("--rc", type=float, default=71.5)
+    parser.add_argument("--rc", type=float, default=Design.rc)
+    parser.add_argument(
+        "--thickness-tol-um",
+        type=float,
+        default=TS_TOL,
+        help="Substrate tolerance the modal guard must hold over (0 checks nominal only)",
+    )
     parser.add_argument("--delta", type=float)
     parser.add_argument("--rc-sweep", nargs=3, type=float, metavar=("START", "STOP", "STEP"))
     parser.add_argument(
@@ -974,19 +1108,17 @@ def main():
     args.intervals = ceil((2 * pi * max(radii) - 30) / 20)
     for d in ds:
         for rc in radii:
-            info = preflight(Design(d.variant, d.layout, rc, d.delta), args.intervals)
+            info = preflight(
+                Design(d.variant, d.layout, rc, d.delta), args.intervals, args.thickness_tol_um
+            )
             if rc == d.rc:
                 print(json.dumps(info, indent=2))
     if args.action == "preflight":
         if args.variant == "cavity_via":
-            clear = []
-            for rc in np.arange(70.0, 95.01, 0.5):
-                try:
-                    check_modes(rc)
-                except ValueError:
-                    continue
-                clear.append(float(rc))
-            print("L1 guard-clear radii (um) on the specified 0.5-um test grid:", clear)
+            for tol in sorted({0.0, args.thickness_tol_um}):
+                clear = clear_radii(60.0, 95.0, 0.05, tol)
+                print(f"L1 guard-clear radii (um), 60-95 um at 0.05 um, substrate ±{tol:g} um:")
+                print("   ", _ranges(clear, 0.05) or "none")
         return
     if not args.out or args.step_ghz <= 0:
         parser.error("build needs --out and a positive frequency spacing.")
