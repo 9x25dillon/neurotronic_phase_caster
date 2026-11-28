@@ -12,7 +12,7 @@ from src.photonic_thz_pulse_engine import PhotonicTHzEmitterArray
 GE = cw.GROWTH_SYSTEMS["ge_ga_czochralski"]
 KDP = cw.GROWTH_SYSTEMS["kdp_aqueous_solution"]
 FULL = cw.WriterCodebook()
-SPOT_RING = cw.WriterCodebook(levels=(0.5, 1.0), layline_charges=(0, 3))
+SPOT_RING = cw.WriterCodebook.spot_ring()
 
 
 # --- growth physics -----------------------------------------------------------------------
@@ -159,6 +159,15 @@ def test_melt_grown_crystal_carries_a_message(ge_run):
     assert ge_run.retro_p > 0.01  # nothing from the future
 
 
+def test_report_carries_all_three_neighbour_controls(ge_run):
+    for acc, p in ((ge_run.retro_accuracy, ge_run.retro_p), (ge_run.forward_accuracy, ge_run.forward_p),
+                   (ge_run.shuffled_accuracy, ge_run.shuffled_p)):
+        assert p > 0.01
+        assert abs(acc - ge_run.chance) < 0.06
+    text = ge_run.summary()
+    assert "retro k-1" in text and "forward k+1" in text and "shuffled" in text
+
+
 def test_photomixer_array_alone_cannot_write_solution_growth():
     act = cw.make_actuator("THz", cw.photonic_full_scale_k(), KDP, FULL)
     rep, _ = cw.run_writer(KDP, act, FULL, message="hi", seed=3, n_permutations=300)
@@ -174,6 +183,16 @@ def test_spot_ring_layline_survives_in_solution_growth():
     assert rep.payload_p < 0.01
 
 
+def test_spot_ring_mode_writes_exact_messages_in_melt_growth():
+    act = cw.make_actuator("Peltier", 8e-3, GE, SPOT_RING)
+    for seed in range(3):
+        rep, _ = cw.run_writer(GE, act, SPOT_RING, message="crystal", code=cw.HAMMING_GRAY, seed=seed,
+                               n_permutations=50)
+        assert rep.message_exact and rep.received_text == "crystal"
+        assert rep.payload_symbols == cw.HAMMING_GRAY.n_symbols(56, SPOT_RING) == 49
+        assert rep.layline_accuracy > 0.97
+
+
 def test_required_full_scale_formula():
     r = cw.Readout()
     need = cw.required_full_scale_k(KDP, FULL, r, snr=5.0)
@@ -184,3 +203,211 @@ def test_required_full_scale_formula():
 def test_demo_runs():
     text = cw.demo("ok")
     assert "Peltier" in text and "THz photomixer array" in text
+
+
+# --- channel coding ----------------------------------------------------------------------------
+
+
+def test_codebook_presets():
+    assert cw.CODEBOOKS["spot_ring_4"] == cw.WriterCodebook((0.5, 1.0), (0, 3))
+    assert cw.CODEBOOKS["full_16"].size == 16 and cw.CODEBOOKS["spot_ring_4"].size == 4
+
+
+@pytest.mark.parametrize("codebook", [FULL, SPOT_RING])
+def test_gray_mapping_flips_one_bit_per_one_step_misread(codebook):
+    words = cw.symbol_words(codebook, gray=True)
+    assert sorted(words.tolist()) == list(range(codebook.size))
+    nc = len(codebook.layline_charges)
+    for s in range(codebook.size):
+        for t in range(codebook.size):
+            if abs(s // nc - t // nc) + abs(s % nc - t % nc) == 1:  # neighbouring level or neighbouring layline
+                assert bin(int(words[s] ^ words[t])).count("1") == 1
+    sym = np.arange(codebook.size)
+    assert np.array_equal(cw.bits_to_symbols(cw.symbols_to_bits(sym, codebook), codebook), sym)
+
+
+def test_natural_mapping_flips_two_bits_on_some_neighbour_misreads():
+    words = cw.symbol_words(FULL, gray=False)
+    assert bin(int(words[1] ^ words[2])).count("1") == 2  # layline 1 -> 2 at the same level
+
+
+def test_bit_mapping_needs_power_of_two_axes():
+    with pytest.raises(ValueError):
+        cw.symbol_words(cw.WriterCodebook((0.3, 0.6, 1.0), (0, 3)))
+
+
+def test_hamming_corrects_every_single_bit_error():
+    import itertools
+    data = np.array(list(itertools.product([0, 1], repeat=4))).ravel()
+    code = cw.hamming74_encode(data)
+    assert code.size == 7 * 16
+    assert np.array_equal(cw.hamming74_decode(code)[0], data)
+    for pos in range(7):
+        bad = code.reshape(-1, 7).copy()
+        bad[:, pos] ^= 1
+        decoded, corrected = cw.hamming74_decode(bad.ravel())
+        assert np.array_equal(decoded, data) and corrected == 16
+
+
+@pytest.mark.parametrize("depth", [None, 1, 3, 4])
+def test_interleaver_roundtrip(depth):
+    bits = np.arange(7 * 11)
+    assert np.array_equal(cw.deinterleave(cw.interleave(bits, 7, depth), 7, depth), bits)
+    assert np.array_equal(cw.interleave(bits, 7, 1), bits)
+
+
+@pytest.mark.parametrize("code", [cw.UNCODED, cw.HAMMING_GRAY, cw.ChannelCode(interleave_depth=1),
+                                  cw.ChannelCode(fec="none", gray=True)])
+@pytest.mark.parametrize("codebook", [FULL, SPOT_RING])
+def test_channel_code_roundtrip(code, codebook):
+    for text in ("crystal", "Ge:Ga", "\u00e9t\u00e9"):
+        symbols = code.encode_text(text, codebook)
+        assert symbols.max() < codebook.size
+        assert code.decode_text(symbols, codebook, len(text.encode()))[0] == text
+
+
+def test_uncoded_mapping_matches_original_text_mapping():
+    from src.water_structure_assay import text_to_symbols
+    for codebook in (FULL, SPOT_RING):
+        assert cw.UNCODED.encode_text("crystal", codebook).tolist() == text_to_symbols("crystal", codebook.size)
+
+
+@pytest.mark.parametrize("codebook", [FULL, SPOT_RING])
+def test_interleaved_hamming_survives_any_single_band_misread(codebook):
+    """Full interleaving puts each of a band's bits into a different codeword, so one wrong band, read as
+    any other symbol, is always repaired."""
+    code = cw.HAMMING_GRAY
+    sent = code.encode_text("crystal", codebook)
+    for k in range(sent.size):
+        for wrong in range(codebook.size):
+            if wrong == sent[k]:
+                continue
+            rx = sent.copy()
+            rx[k] = wrong
+            assert code.decode_text(rx, codebook, 7)[0] == "crystal"
+
+
+def test_without_interleaving_a_diagonal_misread_can_break_a_codeword():
+    code = cw.ChannelCode(interleave_depth=1)
+    sent = code.encode_text("crystal", SPOT_RING)
+    failures = 0
+    for k in range(sent.size):
+        rx = sent.copy()
+        rx[k] = 3 - rx[k]  # both bits flip: other level and other layline
+        failures += code.decode_text(rx, SPOT_RING, 7)[0] != "crystal"
+    assert failures > 0
+
+
+# --- neighbour controls ----------------------------------------------------------------------------
+
+
+def _synthetic(shift, n=240, m=4, seed=0):
+    rng = np.random.default_rng(seed)
+    y = rng.integers(0, m, n)
+    f = 0.3 * rng.standard_normal((n, m))
+    src = np.roll(y, shift)  # band k carries symbol k - shift
+    f[np.arange(n), src] += 1.0
+    return y, f, np.repeat(np.arange(6), n // 6)
+
+
+def test_neighbour_controls_detect_what_they_are_built_to_detect():
+    clean = cw.temporal_controls(*_synthetic(0), n_permutations=200)
+    assert clean.retro.p_value > 0.01 and clean.forward.p_value > 0.01 and clean.shuffled.p_value > 0.01
+    carry = cw.temporal_controls(*_synthetic(1), n_permutations=200)  # band k+1 holds symbol k
+    assert carry.forward.p_value < 0.01 and carry.retro.p_value > 0.01
+    leak = cw.temporal_controls(*_synthetic(-1), n_permutations=200)  # band k-1 holds symbol k
+    assert leak.retro.p_value < 0.01 and leak.forward.p_value > 0.01
+    assert leak.shuffled.p_value > 0.01  # shuffling destroys any adjacency effect
+
+
+# --- drift ----------------------------------------------------------------------------------
+
+
+def test_growth_drift_shapes():
+    ramp = cw.GrowthDrift(0.1)
+    assert ramp.factor(np.array([0.0, 50.0, 100.0]), 100.0) == pytest.approx([0.9, 1.0, 1.1])
+    sine = cw.GrowthDrift(0.2, period_s=40.0)
+    assert sine.factor(np.array([10.0]), 100.0)[0] == pytest.approx(1.2)
+    with pytest.raises(ValueError):
+        cw.GrowthDrift(1.0)
+    with pytest.raises(ValueError):
+        cw.GrowthDrift(0.1, period_s=-1.0)
+
+
+def test_drift_moves_the_record_and_the_clock_track_together():
+    act = cw.make_actuator("x", 0.0, GE, FULL)
+    sched = cw.make_schedule(FULL, [], n_train=2, slot_on_s=1.0, slot_off_s=1.0)
+    rec = cw.write_crystal(GE, act, FULL, sched, drift=cw.GrowthDrift(0.1))
+    assert rec.length_m == pytest.approx(GE.nominal_velocity_m_s * sched.duration_s, rel=1e-3)  # ramp averages out
+    n = rec.t_s.size
+    assert rec.interface_velocity_m_s[n // 10] < rec.interface_velocity_m_s[9 * n // 10]
+    # undriven data track and the clock track's baseline (end of each slot, marker relaxed) drift together
+    steps = int(round(sched.slot_s / (rec.t_s[1] - rec.t_s[0])))
+    ends = np.arange(1, sched.n_slots + 1) * steps - 1
+    assert np.allclose(rec.concentration_rel[ends, 0], rec.clock_concentration_rel[ends], rtol=1e-4)
+    assert np.ptp(rec.clock_concentration_rel[ends]) > 0.01  # and the drift is visible in both
+
+
+def _sweep(system, scale, codebook, code, drift, ref, seeds):
+    act = cw.make_actuator("a", scale, system, codebook)
+    out = []
+    for s in seeds:
+        rep, _ = cw.run_writer(system, act, codebook, message="crystal", code=code, drift=drift,
+                               readout=cw.Readout(clock_reference=ref), seed=s, n_permutations=20)
+        out.append(rep)
+    return out
+
+
+def _pooled(reps, codebook):
+    n_tr = 6 * codebook.size
+    return float(np.mean([(r.training_accuracy * n_tr + r.payload_accuracy * r.payload_symbols)
+                          / (n_tr + r.payload_symbols) for r in reps]))
+
+
+@pytest.mark.parametrize("amplitude", [0.1, 0.2])
+@pytest.mark.parametrize("codebook,code", [(FULL, cw.UNCODED), (SPOT_RING, cw.HAMMING_GRAY)],
+                         ids=["16-symbol-uncoded", "4-symbol-hamming"])
+def test_drift_sweep_clock_reference(codebook, code, amplitude):
+    """Ramped growth-rate drift on Ge:Ga: markers alone lose the level baseline, the clock-track reference
+    restores it. Run on both codebooks."""
+    seeds = range(8)
+    drift = cw.GrowthDrift(amplitude)
+    with_ref = _sweep(GE, 8e-3, codebook, code, drift, True, seeds)
+    without = _sweep(GE, 8e-3, codebook, code, drift, False, seeds)
+    a_ref, a_raw = _pooled(with_ref, codebook), _pooled(without, codebook)
+    assert a_ref > a_raw + 0.2
+    assert all(r.sync_ok and not r.stalled for r in with_ref)
+    if codebook is SPOT_RING:
+        exact = np.mean([r.message_exact for r in with_ref])
+        if amplitude == 0.1:
+            assert a_ref > 0.97 and exact >= 7 / 8
+        else:
+            assert a_ref > 0.9 and exact >= 2 / 8
+        assert not any(r.message_exact for r in without)
+    else:
+        assert a_ref > (0.5 if amplitude == 0.1 else 0.35)
+
+
+def test_oscillating_drift_needs_a_preamble_that_spans_its_period():
+    """The reference removes the drifting baseline; the drift's change of response gain is learned only
+    if the training preamble samples the whole drift cycle."""
+    slot = 10 * GE.interface_thermal_time_s
+    drift = cw.GrowthDrift(0.1, 60 * slot)
+    act = cw.make_actuator("a", 8e-3, GE, SPOT_RING)
+
+    def payload(n_train):
+        return np.mean([cw.run_writer(GE, act, SPOT_RING, message="crystal", code=cw.HAMMING_GRAY, drift=drift,
+                                      n_train=n_train, seed=s, n_permutations=20)[0].payload_accuracy
+                        for s in range(6)])
+
+    short, long = payload(6), payload(36)  # 24 bands (0.4 period) against 144 bands (2.4 periods)
+    assert long > 0.98
+    assert long > short + 0.05
+
+
+def test_clock_reference_helps_solution_growth_under_strong_drift():
+    ir = cw.ir_pump_full_scale_k(12e-3)
+    seeds = range(8)
+    with_ref = _sweep(KDP, ir, SPOT_RING, cw.HAMMING_GRAY, cw.GrowthDrift(0.2), True, seeds)
+    without = _sweep(KDP, ir, SPOT_RING, cw.HAMMING_GRAY, cw.GrowthDrift(0.2), False, seeds)
+    assert _pooled(with_ref, SPOT_RING) > _pooled(without, SPOT_RING)
