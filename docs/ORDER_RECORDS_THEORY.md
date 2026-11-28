@@ -175,8 +175,10 @@ The layline's charge ℓ thus reaches the water as the geometry of a heating pat
 - **P1 (liquid persistence).** In liquid water, I(X; R) falls to zero within the classical memory horizon set by heat transport (219 s for the assay cell). Test: assay H1 and H2. A positive beyond the horizon, absent in sham and heater-matched arms, falsifies P1.
 - **P2 (layline).** A layline's charge is recoverable only while the heating pattern persists. With equal absorbed power and a heater control matched in spatial pattern, charge decoding is at chance at every time. Test: assay codebook equalization plus a patterned heater arm.
 - **P3 (crystals write records).** If symbols are written as interface heating patterns during crystal growth, they become decodable from the dopant striation profile. Interface temperature sets the growth rate, and the growth rate sets dopant uptake (Burton–Prim–Slichter). The records last until solid-state diffusion erases them, which takes geological time at room temperature and days near the melting point. Standard physics predicts success, and growth striations already record history in natural and grown crystals. Implemented in `src/crystal_writer.py` ([CRYSTAL_WRITER.md](CRYSTAL_WRITER.md)):
-  - Ge:Ga by Czochralski with 8 mK Peltier pulses carries "crystal" at 86 % symbol accuracy (p 3×10⁻¹³).
-  - KDP from solution with 1550 nm pump heating carries a spot/ring layline code at 79 %.
+  - Ge:Ga by Czochralski with 8 mK Peltier pulses, means over 48 runs: 65 % symbol accuracy with 16 symbols (4 levels × ring charges ℓ = 0–3, chance 6.25 %), and 98.5 % with 4 symbols (2 levels × spot/ring). With Hamming(7,4), 92 % of 4-symbol messages read back exactly. These replace an earlier single-run figure of 86 %.
+  - KDP from solution with 1550 nm pump heating carries the spot/ring code at 77 % (75 % with clock-track referencing).
+  - Lateral heat spreading at the interface washes out the fine ring charges ℓ = 1, 2, 3, while spot against ring survives. The crystal keeps layline geometry at the coarse level only.
+  - Under a ±10 % growth-rate ramp, referencing each band to the clock track keeps the Ge:Ga 4-symbol mode at 98 % (96 % of messages exact). Without the reference it falls to 69 %.
   - The THz photomixer array alone is too weak to write.
   The same scheme applies to ice: directional freezing with grain, stacking or solute records.
 - **P4 (geometric clock).** Snapshot domain size gives elapsed time since a quench with precision (1/β)(δL/L), and its exponent identifies the conservation law. Test: `CoarseningClock`; experimentally, phase-separating or grain-coarsening samples imaged at known times.
@@ -206,7 +208,7 @@ High-dilution "memory of water" claims did not survive blinded replication (Natu
 - **Fractal claims:** `box_counting_dimension` with scaling-window diagnostics; `sierpinski_carpet` as a reference set.
 - **Records:** `record_fidelity`, `record_lifetime`, `kramers_lifetime`, `barrier_for_lifetime`, `landauer_cost_j`.
 
-`src/crystal_writer.py` implements P3: growth systems (melt and solution), BPS uptake, striation records, clock-track readout, record lifetime, and the retro check.
+`src/crystal_writer.py` implements P3: growth systems (melt and solution), BPS uptake, striation records, growth-rate drift, clock-track readout and referencing, Gray-mapped Hamming(7,4) coding, record lifetime, and the retro, forward and shuffled-band controls.
 
 `tests/test_order_records.py` checks every function against an L0 value: the absence rule over all z, ideal ice q = 1, ideal gas q ≈ 0, a vacancy's neutral charge, model B conservation, the exponent ordering of A and B, clock coverage, box-counting on known sets, record fidelity on known signals, the Kramers inverse, and Landauer's bound.
 

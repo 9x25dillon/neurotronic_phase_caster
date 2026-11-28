@@ -14,16 +14,23 @@ on purpose.
 
 Physics chain
 -------------
+  text   -> bits -> Hamming(7,4) -> interleave -> Gray-mapped symbols   ChannelCode (optional)
   symbol -> (drive level, layline charge)                       WriterCodebook
   drive  -> interface temperature rise dT(t, x)                 ThermalActuator, first-order lag, lateral spreading
   dT     -> microscopic growth velocity v(t, x)
               melt growth     (heat-transport limited): v = v_pull - (1/G) d(dT)/dt     [edge-sensitive]
               solution growth (interface-kinetics):     v = v0 (sigma(T)/sigma0)^g,
                                                         sigma(T) = (1 + sigma0) exp(-(dlnC_eq/dT) dT) - 1   [level-sensitive]
+              slow drift of the growth rate:            v -> v (1 + a f(t))          GrowthDrift (optional)
   v      -> dopant uptake, Burton-Prim-Slichter:  k_eff = k0 / (k0 + (1 - k0) exp(-v delta / D_l))
   k_eff  -> concentration laid down at depth z = integral of v dt     -> striation record c(z, x)
   record -> solid-state diffusion during cool-down and storage: D_s = D0 exp(-Ea / kT)
-  read   -> PSF blur, noise, band location from total length / total time, nearest-centroid decoding
+  read   -> PSF blur, noise, bands located by clock-track markers, features referenced to the clock
+            track's own baseline, nearest-centroid decoding, then de-interleave and Hamming correction
+
+Integrity controls in every report: symbol k decoded from band k-1 (retro: must sit at chance, a leak
+otherwise), from band k+1 (forward: carry-over between neighbours), and from a shuffled band order
+(calibration of the estimator itself).
 
 Evidence levels follow the repository convention (L0 laws, L1 models, L2 parameters, L3 speculation).
 Every preset parameter below is L2: replace it with measured values for the actual growth system.
@@ -44,7 +51,7 @@ except ImportError as exc:  # pragma: no cover
     raise ImportError("crystal_writer needs scipy") from exc
 
 try:
-    from .order_records import record_fidelity
+    from .order_records import RecordFidelity, record_fidelity
     from .photonic_thz_pulse_engine import PhotonicTHzEmitterArray
     from .water_structure_assay import (
         RingIllumination,
@@ -52,11 +59,9 @@ try:
         SymbolCodebook,
         _binomial_sf,
         nearest_centroid_cv,
-        symbols_to_text,
-        text_to_symbols,
     )
 except ImportError:  # executed as a script or with src/ on sys.path
-    from order_records import record_fidelity
+    from order_records import RecordFidelity, record_fidelity
     from photonic_thz_pulse_engine import PhotonicTHzEmitterArray
     from water_structure_assay import (
         RingIllumination,
@@ -64,8 +69,6 @@ except ImportError:  # executed as a script or with src/ on sys.path
         SymbolCodebook,
         _binomial_sf,
         nearest_centroid_cv,
-        symbols_to_text,
-        text_to_symbols,
     )
 
 K_B_EV = 8.617333262e-5  # L0 eV/K
@@ -126,7 +129,8 @@ class GrowthSystem:
         """Microscopic growth velocity v(t, x) from the interface temperature excursion dT(t, x) (axis 0 = time)."""
         d = np.asarray(delta_t_k, dtype=float)
         if self.mode == "melt":
-            rate = np.gradient(d, dt_s, axis=0)
+            # causal backward difference: v(t) must not see dT(t + dt) (a central difference would)
+            rate = np.diff(d, axis=0, prepend=d[:1]) / dt_s
             return self.nominal_velocity_m_s - rate / self.thermal_gradient_k_m
         s0 = self.supersaturation
         sigma = (1.0 + s0) * np.exp(-self.solubility_dlnc_dt * d) - 1.0
@@ -181,6 +185,37 @@ GROWTH_SYSTEMS = {
 }
 
 
+@dataclass(frozen=True)
+class GrowthDrift:
+    """Slow multiplicative drift of the growth rate, v -> v (1 + a f(t)) (L1).
+
+    ``period_s = 0``: linear ramp from 1 - a to 1 + a across the run (melt level falling, crucible
+    depletion, solute depletion in a closed solution). ``period_s > 0``: sinusoid slower than a slot
+    (convective or rotational oscillation). Applied to the data and clock tracks alike.
+    """
+
+    amplitude: float
+    period_s: float = 0.0
+    phase_rad: float = 0.0
+
+    def __post_init__(self) -> None:
+        if not 0.0 <= self.amplitude < 1.0:
+            raise ValueError("drift amplitude must lie in [0, 1)")
+        if self.period_s < 0:
+            raise ValueError("drift period must be >= 0 (0 means a linear ramp)")
+
+    def factor(self, t_s: np.ndarray, duration_s: float) -> np.ndarray:
+        t = np.asarray(t_s, dtype=float)
+        if self.period_s > 0:
+            return 1.0 + self.amplitude * np.sin(2.0 * math.pi * t / self.period_s + self.phase_rad)
+        return 1.0 + self.amplitude * (2.0 * t / duration_s - 1.0)
+
+    @property
+    def label(self) -> str:
+        shape = "ramp" if self.period_s == 0 else f"sine, period {self.period_s:g} s"
+        return f"+/-{self.amplitude * 100:g} % {shape}"
+
+
 # =============================================================================
 # 2. Codebook and actuators
 # =============================================================================
@@ -215,6 +250,21 @@ class WriterCodebook:
             powers.append(illumination.absorbed_power_from_plan(cell, plan))
         p = np.array(powers)
         return cls(tuple(float(v) for v in p / p.max()), nodes.layline_charges)
+
+    @classmethod
+    def spot_ring(cls) -> "WriterCodebook":
+        """Two drive levels x {central spot (l = 0), ring (l = 3)}: 2 bits per band.
+
+        Lateral heat spreading at the interface blurs the ring charges l = 1, 2, 3 into one another but
+        leaves spot against ring distinct, so this is the codebook the crystal actually resolves.
+        """
+        return cls(levels=(0.5, 1.0), layline_charges=(0, 3))
+
+
+CODEBOOKS = {
+    "full_16": WriterCodebook(),  # 4 levels x 4 charges, 4 bits/band: degradation benchmark
+    "spot_ring_4": WriterCodebook.spot_ring(),  # 2 levels x spot/ring, 2 bits/band: operating mode
+}
 
 
 def layline_profile(charge: int, x_m: np.ndarray, illumination: RingIllumination, cell: SampleCell,
@@ -277,7 +327,185 @@ def ir_pump_full_scale_k(absorbed_power_w: float = 10e-3,
 
 
 # =============================================================================
-# 3. Writing: growth simulation
+# 3. Channel coding: Gray mapping, Hamming(7,4), block interleaving
+# =============================================================================
+
+
+def _bits_per_axis(n: int, axis: str) -> int:
+    if n < 1 or n & (n - 1):
+        raise ValueError(f"{axis} count {n} must be a power of two for a bit mapping")
+    return n.bit_length() - 1
+
+
+def gray_code(i):
+    """Reflected binary Gray code: neighbouring integers differ in exactly one bit."""
+    i = np.asarray(i, dtype=np.int64)
+    return i ^ (i >> 1)
+
+
+def symbol_words(codebook: WriterCodebook, gray: bool = True) -> np.ndarray:
+    """Bit word carried by each symbol: (G(level index) << charge bits) | G(charge index).
+
+    The misread structure of the crystal is per axis and one step at a time (a neighbouring level or a
+    neighbouring layline). With ``gray`` each such error flips exactly one bit, which a single-error-
+    correcting code can repair; a diagonal error (both axes) flips two.
+    """
+    _bits_per_axis(len(codebook.levels), "level")
+    charge_bits = _bits_per_axis(len(codebook.layline_charges), "layline")
+    lev = np.arange(len(codebook.levels))
+    chg = np.arange(len(codebook.layline_charges))
+    if gray:
+        lev, chg = gray_code(lev), gray_code(chg)
+    return ((lev[:, None] << charge_bits) | chg[None, :]).ravel()
+
+
+def symbols_to_bits(symbols: Sequence[int], codebook: WriterCodebook, gray: bool = True) -> np.ndarray:
+    bps = int(math.log2(codebook.size))
+    words = symbol_words(codebook, gray)[np.asarray(symbols, dtype=int)]
+    return ((words[:, None] >> np.arange(bps - 1, -1, -1)) & 1).ravel().astype(np.int8)
+
+
+def bits_to_symbols(bits: Sequence[int], codebook: WriterCodebook, gray: bool = True) -> np.ndarray:
+    bps = int(math.log2(codebook.size))
+    b = np.asarray(bits, dtype=np.int64)
+    if b.size % bps:
+        raise ValueError(f"bit count {b.size} is not a multiple of {bps} bits per symbol")
+    words = b.reshape(-1, bps) @ (1 << np.arange(bps - 1, -1, -1))
+    return np.argsort(symbol_words(codebook, gray))[words]
+
+
+# Hamming(7,4), positions 1..7 = p1 p2 d1 p3 d2 d3 d4; the syndrome is the binary index of a flipped position.
+_H74_DATA_POS = np.array([2, 4, 5, 6])
+_H74_CHECK = np.array([[(j + 1) >> r & 1 for j in range(7)] for r in range(3)])
+
+
+def hamming74_encode(data_bits: Sequence[int]) -> np.ndarray:
+    d = np.asarray(data_bits, dtype=np.int8)
+    if d.size % 4:
+        raise ValueError("Hamming(7,4) needs a multiple of 4 data bits")
+    d = d.reshape(-1, 4)
+    w = np.zeros((d.shape[0], 7), dtype=np.int8)
+    w[:, _H74_DATA_POS] = d
+    for r in range(3):
+        cover = [j for j in range(7) if (j + 1) >> r & 1 and j not in (0, 1, 3)]
+        w[:, (1 << r) - 1] = w[:, cover].sum(axis=1) % 2
+    return w.ravel()
+
+
+def hamming74_decode(code_bits: Sequence[int]) -> Tuple[np.ndarray, int]:
+    """Single-error correction per codeword. Returns (data bits, number of codewords corrected).
+
+    Two errors in one codeword are miscorrected (the code's distance is 3); interleaving and Gray mapping
+    exist to keep a single misread band from putting two errors into one codeword.
+    """
+    w = np.asarray(code_bits, dtype=np.int8).reshape(-1, 7).copy()
+    syndrome = (w @ _H74_CHECK.T % 2) @ np.array([1, 2, 4])
+    hit = np.nonzero(syndrome)[0]
+    w[hit, syndrome[hit] - 1] ^= 1
+    return w[:, _H74_DATA_POS].ravel(), int(hit.size)
+
+
+def interleave(bits: Sequence[int], n: int = 7, depth: Optional[int] = None) -> np.ndarray:
+    """Block interleaver: ``depth`` codewords of length n per block, sent column by column.
+
+    Consecutive transmitted bits then come from different codewords, so the bits of one band (2 or 4 of
+    them) and a run of drift-damaged bands are spread over many codewords. ``depth=None`` interleaves the
+    whole message; ``depth=1`` is the identity.
+    """
+    return _block_permute(bits, n, depth, inverse=False)
+
+
+def deinterleave(bits: Sequence[int], n: int = 7, depth: Optional[int] = None) -> np.ndarray:
+    return _block_permute(bits, n, depth, inverse=True)
+
+
+def _block_permute(bits: Sequence[int], n: int, depth: Optional[int], inverse: bool) -> np.ndarray:
+    b = np.asarray(bits)
+    if b.size % n:
+        raise ValueError("interleaver input must be whole codewords")
+    n_cw = b.size // n
+    d = n_cw if depth is None else max(1, int(depth))
+    out = b.copy()
+    for start in range(0, n_cw, d):
+        m = min(d, n_cw - start)
+        block = b[start * n:(start + m) * n]
+        # forward: rows are codewords, read by column; inverse: undo that transpose
+        out[start * n:(start + m) * n] = (block.reshape(n, m).T if inverse else block.reshape(m, n).T).ravel()
+    return out
+
+
+def text_to_bits(text: str) -> np.ndarray:
+    data = np.frombuffer(text.encode("utf-8"), dtype=np.uint8)
+    return np.unpackbits(data).astype(np.int8)
+
+
+def bits_to_text(bits: Sequence[int]) -> str:
+    b = np.asarray(bits, dtype=np.uint8)
+    return np.packbits(b[: b.size - b.size % 8]).tobytes().decode("utf-8", errors="replace")
+
+
+@dataclass(frozen=True)
+class ChannelCode:
+    """Bits -> optional Hamming(7,4) -> optional block interleave -> Gray-mapped symbols.
+
+    Hamming(7,4) corrects one bit per 7-bit codeword at rate 4/7. It earns its overhead only when the raw
+    symbol error rate is low (a few per cent): at the 16-symbol codebook's ~35 % error the message is lost
+    with or without it, and that mode stays uncoded as the degradation benchmark.
+    """
+
+    fec: str = "hamming74"  # "hamming74" or "none"
+    gray: bool = True
+    interleave_depth: Optional[int] = None  # codewords per interleaver block; None = whole message, 1 = off
+
+    def __post_init__(self) -> None:
+        if self.fec not in ("hamming74", "none"):
+            raise ValueError("fec must be 'hamming74' or 'none'")
+
+    @property
+    def rate(self) -> float:
+        return 4.0 / 7.0 if self.fec == "hamming74" else 1.0
+
+    @property
+    def label(self) -> str:
+        parts = ["Hamming(7,4)" if self.fec == "hamming74" else "uncoded", "Gray" if self.gray else "natural"]
+        if self.fec == "hamming74":
+            parts.append("no interleave" if self.interleave_depth == 1 else
+                         f"interleave depth {self.interleave_depth or 'full'}")
+        return ", ".join(parts)
+
+    def n_code_bits(self, n_data_bits: int) -> int:
+        return 7 * math.ceil(n_data_bits / 4) if self.fec == "hamming74" else n_data_bits
+
+    def n_symbols(self, n_data_bits: int, codebook: WriterCodebook) -> int:
+        return math.ceil(self.n_code_bits(n_data_bits) / math.log2(codebook.size))
+
+    def encode(self, data_bits: Sequence[int], codebook: WriterCodebook) -> np.ndarray:
+        bits = np.asarray(data_bits, dtype=np.int8)
+        if self.fec == "hamming74":
+            bits = np.concatenate([bits, np.zeros((-bits.size) % 4, np.int8)])
+            bits = interleave(hamming74_encode(bits), 7, self.interleave_depth)
+        bps = int(math.log2(codebook.size))
+        bits = np.concatenate([bits, np.zeros((-bits.size) % bps, np.int8)])
+        return bits_to_symbols(bits, codebook, self.gray)
+
+    def decode(self, symbols: Sequence[int], codebook: WriterCodebook, n_data_bits: int) -> Tuple[np.ndarray, int]:
+        """Hard-decision decode. Returns (data bits, codewords corrected)."""
+        bits = symbols_to_bits(symbols, codebook, self.gray)[: self.n_code_bits(n_data_bits)]
+        if self.fec == "none":
+            return bits[:n_data_bits], 0
+        data, corrected = hamming74_decode(deinterleave(bits, 7, self.interleave_depth))
+        return data[:n_data_bits], corrected
+
+    def encode_text(self, text: str, codebook: WriterCodebook) -> np.ndarray:
+        return self.encode(text_to_bits(text), codebook)
+
+    def decode_text(self, symbols: Sequence[int], codebook: WriterCodebook, n_bytes: int) -> Tuple[str, int]:
+        data, corrected = self.decode(symbols, codebook, 8 * n_bytes)
+        return bits_to_text(data), corrected
+
+
+# =============================================================================
+# 4. Writing: growth simulation
 # =============================================================================
 
 
@@ -352,6 +580,7 @@ class CrystalRecord:
     stalled: bool  # interface stopped or reversed (meltback / dissolution): record locally overwritten
     marker_full_scale_k: float
     marker_duration_s: float
+    drift: Optional[GrowthDrift] = None
 
     @property
     def length_m(self) -> float:
@@ -369,10 +598,12 @@ class CrystalRecord:
 
 def write_crystal(system: GrowthSystem, actuator: ThermalActuator, codebook: WriterCodebook,
                   schedule: WriteSchedule, marker_full_scale_k: Optional[float] = None,
-                  marker_duration_s: Optional[float] = None, dt_s: Optional[float] = None) -> CrystalRecord:
+                  marker_duration_s: Optional[float] = None, dt_s: Optional[float] = None,
+                  drift: Optional[GrowthDrift] = None) -> CrystalRecord:
     """Grow the crystal under the drive schedule. Deterministic; noise enters only at readout.
 
     Markers default to half the stall limit for two interface time constants at every slot start.
+    ``drift`` scales the growth rate of data and clock tracks by the same slow factor.
     """
     tau = system.interface_thermal_time_s
     dt = dt_s or min(tau / 10.0, schedule.slot_on_s / 20.0)
@@ -390,8 +621,12 @@ def write_crystal(system: GrowthSystem, actuator: ThermalActuator, codebook: Wri
     decay = math.exp(-dt / tau)
     delta_t = lfilter([1.0 - decay], [1.0, -decay], drive, axis=0)
     delta_clock = lfilter([1.0 - decay], [1.0, -decay], clock)
+    t = np.arange(n_t) * dt
     v = system.velocity(delta_t, dt)
     v_clock = system.velocity(delta_clock[:, None], dt)[:, 0]
+    if drift is not None:
+        f = drift.factor(t, schedule.duration_s)
+        v, v_clock = v * f[:, None], v_clock * f
     v_front = v.mean(axis=1)
     floor = 1e-3 * system.nominal_velocity_m_s
     stalled = bool(np.any(v <= floor) or np.any(v_clock <= floor) or np.any(v_front <= floor))
@@ -399,13 +634,12 @@ def write_crystal(system: GrowthSystem, actuator: ThermalActuator, codebook: Wri
     c = system.k_eff(np.maximum(v, floor)) / k_nom
     c_clock = system.k_eff(np.maximum(v_clock, floor)) / k_nom
     z = np.cumsum(np.maximum(v_front, floor)) * dt
-    t = np.arange(n_t) * dt
     return CrystalRecord(system, schedule, t, actuator.x_m, delta_t, np.maximum(v, floor), v_front, c, c_clock, z,
-                         stalled, float(marker_k), float(steps_marker * dt))
+                         stalled, float(marker_k), float(steps_marker * dt), drift)
 
 
 # =============================================================================
-# 4. Storage and readout
+# 5. Storage and readout
 # =============================================================================
 
 
@@ -415,6 +649,12 @@ class Readout:
 
     Data features are bin averages, ``depth_samples_per_slot`` bins per band at ``lateral_samples``
     positions. The clock track is scanned densely. Every reported value carries ``relative_noise``.
+
+    ``clock_reference`` subtracts a baseline from the log features: the clock track's mean log uptake over
+    the last ``reference_fraction`` of each band's window, interpolated to every depth bin. The clock track
+    drifts with the data track but carries no symbol, so the subtraction removes a slowly varying growth
+    rate (and its uptake baseline), which the markers alone cannot: markers fix where a band is, the
+    reference fixes what zero means in it. Cost without drift: under 1 point (Ge:Ga), 2 points (KDP).
     """
 
     psf_sigma_m: float = 1.0e-6  # L2 depth resolution
@@ -422,6 +662,8 @@ class Readout:
     lateral_samples: int = 15
     depth_samples_per_slot: int = 8
     trailing_guard: float = 0.05  # margin below the thinnest band (5th-percentile width)
+    clock_reference: bool = True
+    reference_fraction: float = 0.5  # tail of the window, after the marker has relaxed
 
 
 def anneal(z_m: np.ndarray, c: np.ndarray, system: GrowthSystem, temperature_k: float, time_s: float) -> np.ndarray:
@@ -457,7 +699,8 @@ def read_crystal(record: CrystalRecord, readout: Readout = Readout(), cooldown_s
                  seed: int = 0) -> Tuple[np.ndarray, bool]:
     """Section, anneal (cool-down at growth temperature, then storage), blur, measure, segment, bin.
 
-    Returns (features (n_slots, lateral x depth bins) as log relative concentration, sync_ok).
+    Returns (features (n_slots, lateral x depth bins) as log relative concentration, referenced to the
+    clock-track baseline when ``readout.clock_reference``, and sync_ok).
     """
     rng = np.random.default_rng(seed)
     z, c, c_clock = record.section()
@@ -488,6 +731,10 @@ def read_crystal(record: CrystalRecord, readout: Readout = Readout(), cooldown_s
     # symbol (which shifts that marker) leak backwards; a window longer than the thinnest band would overrun
     # into the next symbol's onset (solution growth thins heated bands). So: fit the thinnest bands.
     width = float(np.quantile(np.diff(bounds), 0.05)) * (1.0 - readout.trailing_guard)
+    log_clock = np.log(np.clip(clock_meas, 1e-12, None))
+    ref_z = np.empty(record.schedule.n_slots)
+    ref_v = np.empty(record.schedule.n_slots)
+    bin_z = np.empty((record.schedule.n_slots, nb))
     for k in range(record.schedule.n_slots):
         edges = np.linspace(bounds[k], min(bounds[k] + width, z[-1]), nb + 1)
         idx = np.clip(np.searchsorted(z, edges), 0, z.size - 1)
@@ -497,12 +744,52 @@ def read_crystal(record: CrystalRecord, readout: Readout = Readout(), cooldown_s
             block[:, b] = cl[lo:hi].mean(axis=0)
         block = block * (1.0 + readout.relative_noise * rng.standard_normal(block.shape))
         feats[k] = np.log(np.clip(block, 1e-12, None)).ravel()
+        bin_z[k] = 0.5 * (edges[:-1] + edges[1:])
+        lo = int(np.searchsorted(z, edges[0] + (1.0 - readout.reference_fraction) * (edges[-1] - edges[0])))
+        hi = max(int(idx[-1]), lo + 1)
+        ref_v[k] = log_clock[lo:hi].mean()
+        ref_z[k] = 0.5 * (z[lo] + z[min(hi, z.size - 1)])
+    if readout.clock_reference:
+        # Baseline at each bin's own depth, interpolated between band tails: follows a drift that changes
+        # within a band, which one constant per band cannot (+2 points in KDP, equal in Ge:Ga). Checked for a
+        # backward leak (band k's tail entering band k-1's late bins): retro rates match the per-band version.
+        per_bin = np.interp(bin_z, ref_z, ref_v)  # (slots, nb)
+        feats -= np.repeat(per_bin[:, None, :], readout.lateral_samples, axis=1).reshape(feats.shape)
     return feats, sync_ok
 
 
 # =============================================================================
-# 5. Decoding and report
+# 6. Decoding and report
 # =============================================================================
+
+
+@dataclass(frozen=True)
+class TemporalControls:
+    """Symbol k decoded from a band other than its own. All three sit at chance in a clean record.
+
+    retro    band k-1 -> symbol k   a reader leak: the reader let a later symbol shape an earlier band
+    forward  band k+1 -> symbol k   carry-over: heat tail, solute boundary layer or diffusion pushing
+                                     symbol k into the next band (physical and causal, but interference)
+    shuffled band order randomised, then retro   calibration: the estimator and its permutation test
+    """
+
+    retro: RecordFidelity
+    forward: RecordFidelity
+    shuffled: RecordFidelity
+
+
+def temporal_controls(symbols: Sequence[int], features: np.ndarray, groups: Sequence[int],
+                      n_permutations: int = 500, seed: int = 0) -> TemporalControls:
+    """Neighbour-band decoding for a contiguous run of slots (the i.i.d. preamble)."""
+    y = np.asarray(symbols, dtype=int)
+    f = np.asarray(features, dtype=float)
+    g = np.asarray(groups)
+    retro = record_fidelity(y[1:], f[:-1], g[1:], n_permutations, seed + 7, standardize=False)
+    forward = record_fidelity(y[:-1], f[1:], g[:-1], n_permutations, seed + 11, standardize=False)
+    perm = np.random.default_rng(seed + 13).permutation(y.size)
+    ys, fs, gs = y[perm], f[perm], g[perm]
+    shuffled = record_fidelity(ys[1:], fs[:-1], gs[1:], n_permutations, seed + 17, standardize=False)
+    return TemporalControls(retro, forward, shuffled)
 
 
 @dataclass(frozen=True)
@@ -514,6 +801,8 @@ class WriterReport:
     contrast_per_kelvin: float
     stalled: bool
     sync_ok: bool  # clock-track markers found for every slot
+    drift: Optional[str]
+    clock_reference: bool
     training_accuracy: float
     training_excess_bits: float
     training_p: float
@@ -521,9 +810,20 @@ class WriterReport:
     layline_accuracy: float  # layline charge alone
     retro_accuracy: float  # symbol k decoded from slot k-1: must sit at chance
     retro_p: float
-    payload_accuracy: float
+    forward_accuracy: float  # symbol k decoded from slot k+1: carry-over between neighbours
+    forward_p: float
+    shuffled_accuracy: float  # retro after randomising band order: estimator calibration
+    shuffled_p: float
+    payload_accuracy: float  # raw symbol accuracy, before any error correction
     payload_p: float
     chance: float
+    code: Optional[str]
+    code_rate: float
+    payload_symbols: int
+    raw_bit_errors: Optional[int]  # channel bits wrong before correction
+    codewords_corrected: Optional[int]
+    data_bit_errors: Optional[int]  # message bits wrong after correction
+    message_exact: Optional[bool]
     sent_text: Optional[str]
     received_text: Optional[str]
     band_period_m: float
@@ -532,19 +832,31 @@ class WriterReport:
 
     def summary(self) -> str:
         yrs = self.lifetime_300k_s / 3.15e7
+        c = self.chance
         lines = [
             f"{self.system} written by {self.actuator}: full-scale dT {self.full_scale_k * 1e3:.2f} mK, "
             f"Peclet {self.peclet:.3f}, contrast {self.contrast_per_kelvin * 100:.2f} %/K"
+            + (f", growth-rate drift {self.drift}" if self.drift else "")
             + ("  INTERFACE STALLED (meltback or dissolution): record overwritten" if self.stalled else "")
             + ("" if self.sync_ok else "  CLOCK TRACK LOST: bands located by mean growth rate"),
-            f"  preamble decode {self.training_accuracy:.3f} (chance {self.chance:.3f}), "
+            f"  preamble decode {self.training_accuracy:.3f} (chance {c:.3f}), "
             f"{self.training_excess_bits:.2f} bits/symbol, p {self.training_p:.3g}; "
-            f"level {self.level_accuracy:.2f}, layline {self.layline_accuracy:.2f}",
-            f"  retro check (symbol from the band before it) {self.retro_accuracy:.3f}, p {self.retro_p:.3g}",
-            f"  payload {self.payload_accuracy:.3f}, binomial p {self.payload_p:.3g}",
+            f"level {self.level_accuracy:.2f}, layline {self.layline_accuracy:.2f}"
+            + ("" if self.clock_reference else "; no clock-track reference"),
+            f"  neighbour controls (chance {c:.3f}): retro k-1 {self.retro_accuracy:.3f} p {self.retro_p:.2g}; "
+            f"forward k+1 {self.forward_accuracy:.3f} p {self.forward_p:.2g}; "
+            f"shuffled {self.shuffled_accuracy:.3f} p {self.shuffled_p:.2g}",
         ]
+        if self.payload_symbols:
+            lines.append(f"  payload {self.payload_symbols} bands, raw symbol accuracy {self.payload_accuracy:.3f}, "
+                         f"binomial p {self.payload_p:.3g}")
+        if self.code is not None and self.data_bit_errors is not None:
+            corr = "" if self.codewords_corrected is None else f", {self.codewords_corrected} codewords corrected"
+            lines.append(f"  code {self.code} (rate {self.code_rate:.3g}): {self.raw_bit_errors} channel bit errors"
+                         f"{corr}, {self.data_bit_errors} message bit errors after decoding")
         if self.sent_text is not None:
-            lines.append(f"  sent {self.sent_text!r} -> read {self.received_text!r}")
+            lines.append(f"  sent {self.sent_text!r} -> read {self.received_text!r}"
+                         + ("  exact" if self.message_exact else ""))
         lines.append(f"  band period {self.band_period_m * 1e6:.1f} um; record e-folding time at 300 K "
                      f"{yrs:.3g} years; full scale needed for SNR 5: {self.required_full_scale_k * 1e3:.2f} mK")
         return "\n".join(lines)
@@ -558,19 +870,31 @@ def required_full_scale_k(system: GrowthSystem, codebook: WriterCodebook, readou
     return snr * noise / (system.contrast_per_kelvin() * step)
 
 
+UNCODED = ChannelCode(fec="none", gray=False)  # byte bits straight onto symbols: the original mapping
+HAMMING_GRAY = ChannelCode()  # Hamming(7,4), Gray, whole-message interleave
+
+
 def run_writer(system: GrowthSystem, actuator: ThermalActuator, codebook: WriterCodebook,
                message: Optional[str] = None, payload: Optional[Sequence[int]] = None,
                readout: Readout = Readout(), n_train: int = 6, slot_on_s: Optional[float] = None,
                slot_off_s: Optional[float] = None, n_permutations: int = 500, seed: int = 0,
-               storage: Sequence[Tuple[float, float]] = ((300.0, 3.15e7),)) -> Tuple[WriterReport, CrystalRecord]:
-    """Write a preamble plus a message, store, read back, decode. ``message`` needs a power-of-two codebook."""
+               storage: Sequence[Tuple[float, float]] = ((300.0, 3.15e7),),
+               code: Optional[ChannelCode] = None, drift: Optional[GrowthDrift] = None,
+               ) -> Tuple[WriterReport, CrystalRecord]:
+    """Write a preamble plus a message, store, read back, decode.
+
+    ``message`` is encoded with ``code`` (default ``UNCODED``: byte bits straight onto symbols; pass
+    ``HAMMING_GRAY`` for error correction). ``payload`` sends raw symbols instead. The preamble is always
+    uncoded i.i.d. symbols: it trains the decoder and carries the neighbour controls.
+    """
     if message is not None:
-        payload = text_to_symbols(message, codebook.size)
+        code = code or UNCODED
+        payload = code.encode_text(message, codebook).tolist()
     payload = list(payload or [])
     on = slot_on_s if slot_on_s is not None else 5.0 * system.interface_thermal_time_s
     off = slot_off_s if slot_off_s is not None else 5.0 * system.interface_thermal_time_s
     sched = make_schedule(codebook, payload, n_train, on, off, seed)
-    rec = write_crystal(system, actuator, codebook, sched)
+    rec = write_crystal(system, actuator, codebook, sched, drift=drift)
     feats, sync_ok = read_crystal(rec, readout, storage=storage, seed=seed + 1)
     y = np.array(sched.symbols)
     train = np.array(sched.is_training)
@@ -582,12 +906,11 @@ def run_writer(system: GrowthSystem, actuator: ThermalActuator, codebook: Writer
     n_charges = len(codebook.layline_charges)
     level_acc = float(np.mean(cv_pred // n_charges == y[train] // n_charges))
     layline_acc = float(np.mean(cv_pred % n_charges == y[train] % n_charges))
-    prev = np.nonzero(train)[0]
-    prev = prev[prev > 0]
-    retro = record_fidelity(y[prev], feats[prev - 1], groups[prev], n_permutations, seed + 7, standardize=False)
+    ctrl = temporal_controls(y[train], feats[train], groups[train], n_permutations, seed)
 
     pay_acc = pay_p = math.nan
     received = None
+    raw_err = corrected = data_err = exact = None
     if payload:
         test = ~train
         labels = np.concatenate([y[train], np.zeros(int(test.sum()), int)])
@@ -598,16 +921,30 @@ def run_writer(system: GrowthSystem, actuator: ThermalActuator, codebook: Writer
         pay_acc = k / pred.size
         pay_p = _binomial_sf(k, pred.size, 1.0 / codebook.size)
         if message is not None:
-            received = symbols_to_text(pred.tolist(), codebook.size)
+            n_bytes = len(message.encode("utf-8"))
+            raw_err = int(np.sum(symbols_to_bits(pred, codebook, code.gray) != symbols_to_bits(y[test], codebook, code.gray)))
+            data, corrected = code.decode(pred, codebook, 8 * n_bytes)
+            data_err = int(np.sum(data != text_to_bits(message)))
+            received = bits_to_text(data)
+            exact = data_err == 0
+            corrected = corrected if code.fec != "none" else None
 
     period = system.nominal_velocity_m_s * sched.slot_s
     report = WriterReport(
         system=system.name, actuator=actuator.name, full_scale_k=actuator.full_scale_k, peclet=system.peclet,
         contrast_per_kelvin=system.contrast_per_kelvin(), stalled=rec.stalled, sync_ok=sync_ok,
+        drift=drift.label if drift is not None else None, clock_reference=readout.clock_reference,
         training_accuracy=fid.accuracy, training_excess_bits=fid.excess_bits, training_p=fid.p_value,
         level_accuracy=level_acc, layline_accuracy=layline_acc,
-        retro_accuracy=retro.accuracy, retro_p=retro.p_value, payload_accuracy=pay_acc, payload_p=pay_p,
-        chance=1.0 / codebook.size, sent_text=message, received_text=received, band_period_m=period,
+        retro_accuracy=ctrl.retro.accuracy, retro_p=ctrl.retro.p_value,
+        forward_accuracy=ctrl.forward.accuracy, forward_p=ctrl.forward.p_value,
+        shuffled_accuracy=ctrl.shuffled.accuracy, shuffled_p=ctrl.shuffled.p_value,
+        payload_accuracy=pay_acc, payload_p=pay_p, chance=1.0 / codebook.size,
+        code=code.label if (message is not None and code is not None) else None,
+        code_rate=code.rate if (message is not None and code is not None) else 1.0,
+        payload_symbols=len(payload), raw_bit_errors=raw_err, codewords_corrected=corrected,
+        data_bit_errors=data_err, message_exact=exact,
+        sent_text=message, received_text=received, band_period_m=period,
         lifetime_300k_s=system.record_lifetime_s(period, 300.0),
         required_full_scale_k=required_full_scale_k(system, codebook, readout),
     )
@@ -615,25 +952,29 @@ def run_writer(system: GrowthSystem, actuator: ThermalActuator, codebook: Writer
 
 
 # =============================================================================
-# 6. Demo
+# 7. Demo
 # =============================================================================
 
 
 def demo(message: str = "crystal") -> str:
-    full = WriterCodebook()
-    spot_ring = WriterCodebook(levels=(0.5, 1.0), layline_charges=(0, 3))
+    full = CODEBOOKS["full_16"]
+    spot_ring = CODEBOOKS["spot_ring_4"]
     ge = GROWTH_SYSTEMS["ge_ga_czochralski"]
     kdp = GROWTH_SYSTEMS["kdp_aqueous_solution"]
+    ir = ir_pump_full_scale_k(12e-3)
     rows = ["CRYSTAL WRITER"]
     cases = [
-        (ge, full, "Peltier interface pulses", 8e-3),
-        (kdp, full, "THz photomixer array", photonic_full_scale_k()),
-        (kdp, full, "1550 nm pump light, 12 mW absorbed", ir_pump_full_scale_k(12e-3)),
-        (kdp, spot_ring, "1550 nm pump light, 12 mW absorbed", ir_pump_full_scale_k(12e-3)),
+        # (system, codebook, actuator label, full scale, code, drift)
+        (ge, full, "Peltier interface pulses", 8e-3, UNCODED, None),  # degradation benchmark
+        (ge, spot_ring, "Peltier interface pulses", 8e-3, HAMMING_GRAY, None),  # operating mode
+        (ge, spot_ring, "Peltier interface pulses", 8e-3, HAMMING_GRAY, GrowthDrift(0.1)),
+        (kdp, full, "THz photomixer array", photonic_full_scale_k(), UNCODED, None),
+        (kdp, full, "1550 nm pump light, 12 mW absorbed", ir, UNCODED, None),
+        (kdp, spot_ring, "1550 nm pump light, 12 mW absorbed", ir, HAMMING_GRAY, None),
     ]
-    for system, cb, label, scale in cases:
+    for system, cb, label, scale, code, drift in cases:
         act = make_actuator(label, scale, system, cb)
-        rep, _ = run_writer(system, act, cb, message=message, seed=3)
+        rep, _ = run_writer(system, act, cb, message=message, code=code, drift=drift, seed=3)
         rows.append(f"[{cb.size} symbols: levels {cb.levels}, laylines {cb.layline_charges}]")
         rows.extend("  " + line for line in rep.summary().splitlines())
         rows.append(f"  stall limit (peak dT before {'meltback' if system.mode == 'melt' else 'dissolution'}): "

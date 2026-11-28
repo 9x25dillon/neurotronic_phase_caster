@@ -116,11 +116,17 @@ try:
     from .crystal_writer import (
         GrowthSystem,
         GROWTH_SYSTEMS,
+        GrowthDrift,
         WriterCodebook,
+        CODEBOOKS,
+        ChannelCode,
+        UNCODED,
+        HAMMING_GRAY,
         make_actuator,
         write_crystal,
         read_crystal,
         run_writer,
+        temporal_controls,
     )
 except ImportError:
     pass
@@ -193,4 +199,10 @@ __all__ = [
     "write_crystal",
     "read_crystal",
     "run_writer",
+    "GrowthDrift",
+    "CODEBOOKS",
+    "ChannelCode",
+    "UNCODED",
+    "HAMMING_GRAY",
+    "temporal_controls",
 ]
