@@ -198,9 +198,15 @@ class THzCoherenceWearable:
     - Closed-loop optimization
     """
 
-    def __init__(self):
-        """Initialize wearable controller."""
-        self.emitters = EmitterArray()
+    def __init__(self, emitters: Optional[EmitterArray] = None):
+        """Initialize wearable controller.
+
+        Args:
+            emitters: Emitter backend. Defaults to the QCL ``EmitterArray``; pass
+                ``photonic_thz_pulse_engine.PhotonicTHzEmitterArray()`` for the
+                photomixer-based, phase-coherent backend.
+        """
+        self.emitters = emitters if emitters is not None else EmitterArray()
         self.safety = SafetySystem()
         self.is_running = False
         self.session_time = 0.0
