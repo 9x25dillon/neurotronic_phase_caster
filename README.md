@@ -58,8 +58,42 @@ This will run 3 demonstrations:
 - [**ABCR Integration**](docs/YHWH_ABCR_INTEGRATION_SUMMARY.md) - Clinical applications
 - [**NSCTS-LiMp-Eopiez Integration**](docs/INTEGRATION_GUIDE.md) - Advanced entropy & symbolic processing
 - [**Hardware Spec**](docs/THZ_WEARABLE_HARDWARE_SPEC.md) - BOM, manufacturing, FDA pathway
+- [**Photonic THz Pulse Engine**](docs/PHOTONIC_THZ_PULSE_ENGINE.md) - all-optical THz-rate IR pulsing, photomixer backend, exposure interlock
+- [**Water Structure Assay**](docs/WATER_STRUCTURE_ASSAY.md) - preregistered, blinded test of persistent THz-written states and a symbol channel in water
+- [**Order, Absence and Records**](docs/ORDER_RECORDS_THEORY.md) - the programme's physical theory: operational definitions of geometric absence, morphic field and record in crystallography, phase-field and statistical-mechanics terms
+- [**Crystal Writer**](docs/CRYSTAL_WRITER.md) - writes a symbol stream into a growing crystal as dopant striations and reads it back
 - [**Roadmap**](ROADMAP.md) - 4.5-year development plan
 - [**Contributing**](CONTRIBUTING.md) - How to contribute
+
+---
+
+## 💡 **Photonic THz Pulse Engine**
+
+`src/photonic_thz_pulse_engine.py` builds THz-rate IR pulse trains all-optically and converts them to THz in photomixers. Electronics stop near 100 GHz, so it uses dual-laser heterodyne beating, Kerr microcombs, Fabry-Perot or temporal-Talbot rate multiplication, and Kerr or saturable-absorber gating. `PhotonicTHzEmitterArray` is a drop-in `EmitterArray`: twelve phase-coherent channels driven from one laser pair, with a skin-exposure interlock and depth-resolved tissue attenuation in every drive plan.
+
+```bash
+python src/photonic_thz_pulse_engine.py --figure docs/figures/photonic_thz_pulse_engine.png
+python -m pytest -q tests
+```
+
+![Photonic THz pulse engine](docs/figures/photonic_thz_pulse_engine.png)
+
+### Water Structure Assay
+
+`src/water_structure_assay.py` writes a symbol stream (text, EEG substrate states, or random draws) into a water cell as a THz frequency node plus a helical phase layline across the 12-channel ring. It then reads the cell back before, during and after the drive, and in later trials. Active, sham and heater-matched arms are blinded under a hash-committed allocation key; the analysis plan is a SHA-256-digested preregistration. Claims count only after the classical (thermal) memory horizon.
+
+```bash
+python src/water_structure_assay.py --message "hello" --json report.json   # simulated null + positive control
+```
+
+### Order, Absence and Records · Crystal Writer
+
+[`docs/ORDER_RECORDS_THEORY.md`](docs/ORDER_RECORDS_THEORY.md) states the programme as a physical theory. It defines geometric absence, the morphic field, and a record ("mathematical impression") operationally, with estimators in `src/order_records.py`. `src/crystal_writer.py` tests the theory's prediction P3: it writes a message into a growing crystal as dopant striations and reads it back.
+
+```bash
+python src/order_records.py     # absences, tetrahedral order, defects, coarsening clocks, fractal checks
+python src/crystal_writer.py    # Ge:Ga melt growth and KDP solution growth as record media
+```
 
 ---
 

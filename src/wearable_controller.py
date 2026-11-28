@@ -569,7 +569,15 @@ class NeurotronicPhaseCasterWearable:
     5. Adapt and repeat
     """
 
-    def __init__(self, config: Optional[Dict] = None):
+    def __init__(self, config: Optional[Dict] = None, emitter_backend: Optional[Any] = None):
+        """
+        Args:
+            config: Optional configuration dictionary.
+            emitter_backend: Optional object with ``plan(hardware_cmd)`` and
+                ``apply_plan(plan)``, e.g. ``PhotonicTHzEmitterArray``. When set,
+                every emitted pulse is translated into photonic drive setpoints
+                and the resulting plan is stored in ``last_drive_plan``.
+        """
         self.config = config or {}
 
         # Core components
@@ -577,6 +585,8 @@ class NeurotronicPhaseCasterWearable:
         self.deficiency_detector = CoherenceDeficiencyDetector()
         self.pulse_generator = THzPulseGenerator()
         self.nscts_trainer = NeuroSymbioticCoherenceTrainer()
+        self.emitter_backend = emitter_backend
+        self.last_drive_plan: Optional[Any] = None
 
         # State tracking
         self.is_running = False
@@ -760,6 +770,13 @@ class NeurotronicPhaseCasterWearable:
 
         logger.info(f"Emitting THz pulse: {pulse_params.frequency:.2f} THz, "
                    f"{pulse_params.amplitude:.2f} amplitude, {pulse_params.duration:.0f}ms")
+
+        if self.emitter_backend is not None:
+            plan = self.emitter_backend.plan(hardware_cmd)
+            applied = self.emitter_backend.apply_plan(plan)
+            self.last_drive_plan = plan
+            if not applied:
+                logger.warning("Emitter backend interlock refused the drive plan: %s", plan.warnings)
 
         # Simulate hardware response time
         await asyncio.sleep(0.1)
